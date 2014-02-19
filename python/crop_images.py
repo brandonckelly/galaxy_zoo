@@ -25,7 +25,7 @@ for file in training_files[:10]:
 
     # loop over images in each band
     for c in range(3):
-        print, '    ', c, '...'
+        print '    ', c, '...'
         # find local maximum that is closest to center of image
         this_im = im[:, :, c]
         coords = peak_local_max(this_im, min_distance=20)
@@ -34,26 +34,31 @@ for file in training_files[:10]:
         centroid = coords[lmax_idx, :]  # coordinates of galaxy center
 
         # now find approximate galaxy radius by fitting a 2-d gaussian function
-        g2d_init = models.Gaussian2D(amplitude=1.0, x_mean=centroid[0], y_mean=centroid[1])
+        xcent = np.arange(this_im.shape[0]) - centroid[0]
+        ycent = np.arange(this_im.shape[1]) - centroid[1]
+        Mxx = np.sum(xcent ** 2 * this_im[:, centroid[1]]) / np.sum(this_im[:, centroid[1]])
+        Myy = np.sum(ycent ** 2 * this_im[centroid[0], :]) / np.sum(this_im[centroid[0], :])
+        g2d_init = models.Gaussian2D(amplitude=1.0, x_mean=centroid[0], y_mean=centroid[1], y_stddev=np.sqrt(Myy),
+                                     x_stddev=np.sqrt(Mxx))
         g2d_init.x_mean.fixed = True
         g2d_init.y_mean.fixed = True
         fitter = fitting.NonLinearLSQFitter()
         x, y = np.mgrid[:ndim[0], :ndim[1]]
-        gauss_fit = fitting(g2d_init, x, y, this_im)
+        gauss_fit = fitter(g2d_init, x, y, this_im)
 
         # crop the image to 3-sigma and save it
-        xrange = 3.0 * gauss_fit.x_stdev
-        yrange = 3.0 * gauss_fit.y_stdev
-        xmin = centroid[0] - xrange
+        xrange = 3.0 * np.abs(gauss_fit.x_stddev)
+        yrange = 3.0 * np.abs(gauss_fit.y_stddev)
+        xmin = int(centroid[0] - xrange)
         if xmin < 0:
             xmin = 0
-        xmax = centroid[0] + xrange
+        xmax = int(centroid[0] + xrange)
         if xmax > ndim[0]:
             xmax = ndim[0]
-        ymin = centroid[1] - yrange
+        ymin = int(centroid[1] - yrange)
         if ymin < 0:
             ymin = 0
-        ymax = centroid[1] + yrange
+        ymax = int(centroid[1] + yrange)
         if ymax > ndim[1]:
             ymax = ndim[1]
 
@@ -67,5 +72,6 @@ for file in training_files[:10]:
             plt.subplot(122)
             plt.imshow(cropped_im, cmap='hot')
             plt.title('Cropped')
+            plt.show()
 
         # finally, save the image
