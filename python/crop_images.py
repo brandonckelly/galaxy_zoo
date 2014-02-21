@@ -164,6 +164,9 @@ for file in training_files[:11]:
         if ~np.all(np.isfinite(iparams)):
             # non-finite initial guess, skip this source
             print 'Non-finite initial guess at parameters detected for source', source_id, ', band', c
+            error_messages['SourceID'].append(source_id)
+            error_messages['Band'].append(c)
+            error_messages['ErrorFlag'].append(-99)
             continue
 
         params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
