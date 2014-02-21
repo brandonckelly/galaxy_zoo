@@ -277,3 +277,7 @@ for file in training_files[:11]:
     avg_tdiff += tdiff / ntdiff
     print 'Doing', avg_tdiff, 'seconds / galaxy.'
     print (len(training_files) - ntdiff) * avg_tdiff / 60.0 / 60.0, 'hours left.'
+
+# dump error messages to CSV file
+error_messages = pd.DataFrame(error_messages)
+error_messages.to_csv(data_dir + 'gauss_fit/error_messages.csv')
