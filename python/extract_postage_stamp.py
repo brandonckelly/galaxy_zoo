@@ -11,6 +11,7 @@ import pandas as pd
 from scipy import optimize
 import datetime
 from scipy import linalg
+import multiprocessing
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -18,7 +19,6 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-training_files = glob.glob(training_dir + '*.jpg')
 doshow = False
 
 
@@ -79,25 +79,17 @@ def sum_of_gaussians_error(params, image, xgrid, ygrid, xcent, ycent):
     return error
 
 
-error_messages = {'SourceID': [], 'Band': [], 'ErrorFlag': []}
+def extract_gal_image(file):
 
-print len(training_files), 'galaxies...'
-print 'Doing file...'
-
-avg_tdiff = 0.0
-ntdiff = 0
-
-for file in training_files[:11]:
-    print file, '...'
     source_id = file.split('/')[-1].split('.')[0]
-    # load the JPEG image into a numpy array
+    print source_id
     im = np.array(Image.open(file)).astype(float)
     ndim = im.shape
 
     df_list = []
+    error_messages = {'SourceID': [], 'Band': [], 'ErrorFlag': []}
 
     # loop over images in each band
-    start_time = datetime.datetime.now()
     for c in range(3):
         print '    ', c, '...'
         # find local maximum that is closest to center of image
@@ -109,10 +101,19 @@ for file in training_files[:11]:
         uvals, uidx = np.unique(this_im[coords[:, 0], coords[:, 1]], return_index=True)
         coords = coords[uidx, :]  # only keep peaks with unique flux values
         distance = np.sqrt((coords[:, 1] - ndim[0] / 2) ** 2 + (coords[:, 0] - ndim[1] / 2) ** 2)
+        d_idx = distance.argmin()
         # order the peaks by intensity, only keep top 5
         sort_idx = np.argsort(this_im[coords[:, 0], coords[:, 1]])[::-1]
-        distance = distance[sort_idx[:5]]
-        coords = coords[sort_idx[:5]]
+        if d_idx in sort_idx[:5]:
+            distance = distance[sort_idx[:5]]
+            coords = coords[sort_idx[:5]]
+        else:
+            # make sure we keep the central galaxy
+            sort_idx = sort_idx[:4]
+            sort_idx = np.append(sort_idx, d_idx)
+            distance = distance[sort_idx]
+            coords = coords[sort_idx]
+
         # order the peaks by distance from the center of the image
         sort_idx = np.argsort(distance)
         distance = distance[sort_idx]
@@ -174,10 +175,9 @@ for file in training_files[:11]:
                                                  xcentroids, ycentroids), ftol=5e-2, xtol=5e-2)
 
         # if error, then save the info for analysis later
-        if success not in [1, 2, 3, 4]:
-            error_messages['SourceID'].append(source_id)
-            error_messages['Band'].append(c)
-            error_messages['ErrorFlag'].append(success)
+        error_messages['SourceID'].append(source_id)
+        error_messages['Band'].append(c)
+        error_messages['ErrorFlag'].append(success)
 
         if ~np.all(np.isfinite(params)):
             # don't crop image and save if non-finite parameters
@@ -217,7 +217,7 @@ for file in training_files[:11]:
             gal_covar[1, 0] = covar[0, 1]
 
             mah_distance = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(gal_covar), centdiff)))
-            if k > 0 and radius < 12.0 and np.exp(params[4 * k] - params[0]) > 0.2 and mah_distance < 5.0:
+            if k > 0 and radius < 20.0 and np.exp(params[4 * k] - params[0]) > 0.2 and mah_distance < 5.0:
                 # subtract any nearby sources that look like stars and are 20% as bright as the central galaxy
                 gauss_image = bivariate_gaussian(colgrid, rowgrid, xsigma[k], ysigma[k], rho[k], xcentroids[k],
                                                  ycentroids[k])
@@ -280,17 +280,46 @@ for file in training_files[:11]:
 
     # save the mixture of gaussians model parameters
     dataframe = pd.concat(df_list, keys=['1', '2', '3'])
+    dataframe.index.names = ('Band', 'GaussianID')
     dataframe.to_csv(data_dir + 'gauss_fit/' + source_id + '_gauss_params.csv')
+
+    err_df = pd.DataFrame(error_messages).set_index('Band')
+
+    return err_df
+
+
+if __name__ == "__main__":
+
+    start_time = datetime.datetime.now()
+
+    pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
+    # warm up the pool
+    pool.map(int, range(multiprocessing.cpu_count() - 1))
+
+    training_files = glob.glob(training_dir + '*.jpg')
+    training_files = training_files[:40000]
+
+    print len(training_files), 'galaxies...'
+    print 'Source ID...'
+
+    do_parallel = True
+    if do_parallel:
+        err_dfs = pool.map(extract_gal_image, training_files)
+    else:
+        err_dfs = map(extract_gal_image, training_files)
+
+    source_ids = []
+    for file in training_files:
+        source_ids.append(file.split('/')[-1].split('.')[0])
+
+    err_df = pd.concat(err_dfs, keys=source_ids)
+    err_df = err_df.drop('SourceID', 1)
+    err_df.index.names = ('SourceID', 'Band')
+    # dump error messages to CSV file
+    err_df.to_csv(data_dir + 'gauss_fit/error_messages.csv')
 
     end_time = datetime.datetime.now()
 
     tdiff = end_time - start_time
     tdiff = tdiff.total_seconds()
-    ntdiff += 1
-    avg_tdiff += tdiff / ntdiff
-    print 'Doing', avg_tdiff, 'seconds / galaxy.'
-    print (len(training_files) - ntdiff) * avg_tdiff / 60.0 / 60.0, 'hours left.'
-
-# dump error messages to CSV file
-error_messages = pd.DataFrame(error_messages)
-error_messages.to_csv(data_dir + 'gauss_fit/error_messages.csv')
+    print 'Did', len(training_files), 'galaxies in', tdiff / 60.0 / 60.0, 'hours.'
