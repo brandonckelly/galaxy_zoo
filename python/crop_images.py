@@ -161,6 +161,11 @@ for file in training_files[:11]:
         image_fit = this_im - base_flux
         rowgrid, colgrid = np.mgrid[:ndim[0], :ndim[1]]
 
+        if ~np.all(np.isfinite(iparams)):
+            # non-finite initial guess, skip this source
+            print 'Non-finite initial guess at parameters detected for source', source_id, ', band', c
+            continue
+
         params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
                                            args=(image_fit.ravel(), colgrid.ravel(), rowgrid.ravel(),
                                                  xcentroids, ycentroids), ftol=5e-2, xtol=5e-2)
@@ -170,6 +175,11 @@ for file in training_files[:11]:
             error_messages['SourceID'].append(source_id)
             error_messages['Band'].append(c)
             error_messages['ErrorFlag'].append(success)
+
+        if ~np.all(np.isfinite(params)):
+            # don't crop image and save if non-finite parameters
+            print 'Non-finite parameters detected for source', source_id, ', band', c
+            continue
 
         # get ellipse parameters for each Gaussian function
         rotang = np.zeros(nsources)
