@@ -96,6 +96,7 @@ def extract_gal_image(file):
         this_im = im[:, :, c]
         flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
         peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 5-sigma peaks
+        peak_threshold = min(peak_threshold, this_im.max() / 3)
         coords = peak_local_max(this_im, min_distance=20, threshold_abs=peak_threshold, exclude_border=False)
 
         uvals, uidx = np.unique(this_im[coords[:, 0], coords[:, 1]], return_index=True)
@@ -297,7 +298,8 @@ if __name__ == "__main__":
     pool.map(int, range(multiprocessing.cpu_count() - 1))
 
     training_files = glob.glob(training_dir + '*.jpg')
-    training_files = training_files[:40000]
+    training_files = training_files[40000:45000]
+    # training_files = [training_dir + '685386.jpg']
 
     print len(training_files), 'galaxies...'
     print 'Source ID...'
