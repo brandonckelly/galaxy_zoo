@@ -298,10 +298,28 @@ if __name__ == "__main__":
     pool.map(int, range(multiprocessing.cpu_count() - 1))
 
     training_files = glob.glob(training_dir + '*.jpg')
-    training_files = training_files[40000:45000]
-    # training_files = [training_dir + '685386.jpg']
+    training_files = training_files[:40000]
+
+    # find which ones we've already done
+    already_done1 = glob.glob(plot_dir + '*_0.png')
+    already_done2 = glob.glob(plot_dir + '*_1.png')
+    already_done3 = glob.glob(plot_dir + '*_2.png')
+
+    already_done1 = set([s.split('/')[-1].split('_')[0] for s in already_done1])
+    already_done2 = set([s.split('/')[-1].split('_')[0] for s in already_done2])
+    already_done3 = set([s.split('/')[-1].split('_')[0] for s in already_done3])
+
+    already_done = already_done1 & already_done2 & already_done3
+    print 'Already done', len(already_done), 'galaxies.'
+    all_sources = set([tfile.split('/')[-1].split('.')[0] for tfile in training_files])
+
+    left_to_do = all_sources - already_done
+
+    print 'Have', len(left_to_do), 'galaxies left.'
+    training_files = [training_dir + sID + '.jpg' for sID in left_to_do]
 
     print len(training_files), 'galaxies...'
+    assert len(training_files) == len(left_to_do)
     print 'Source ID...'
 
     do_parallel = True
