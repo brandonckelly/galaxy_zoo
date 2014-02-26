@@ -298,7 +298,7 @@ if __name__ == "__main__":
     pool.map(int, range(multiprocessing.cpu_count() - 1))
 
     training_files = glob.glob(training_dir + '*.jpg')
-    training_files = training_files[:40000]
+    training_files = training_files[55000:]
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
