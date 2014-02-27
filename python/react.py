@@ -77,3 +77,17 @@ class REACT(object):
         best_order = risk.argmin()
         self.shrinkage_factors = np.ones(len(coefs_snr))
         self.shrinkage_factors[best_order:] = 0.0  # only keep first best_order basis coefficients
+
+
+class REACT2D(REACT):
+
+    def predict(self, x):
+        super(REACT2D, self).predict(x)
+
+    @staticmethod
+    def build_dct(n, p):
+        pass
+
+    def fit(self, y, sigsqr, X=None):
+        ysmooth = super(REACT2D, self).fit(y.ravel(), X, sigsqr)
+        return np.reshape(ysmooth, y.shape)
