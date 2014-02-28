@@ -3,6 +3,8 @@ __author__ = 'brandonkelly'
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
+import os
+
 
 class REACT(object):
 
@@ -24,7 +26,6 @@ class REACT(object):
         self.coefs = np.zeros(1)
         self.shrinkage_factors = np.zeros(1)
         self.X = np.zeros((1, 1))
-        super(REACT).__init__()
 
     def fit(self, y, X=None, sigsqr=None):
 
@@ -46,6 +47,7 @@ class REACT(object):
 
         if self.method == 'monotone':
             # use monotone shrinkage on the basis coefficients
+            print 'Getting shrinkage factors...'
             self._set_shrinkage_factors(sigsqr)
         else:
             # use nested subset selection to choose the order of the basis expansion
@@ -82,7 +84,11 @@ class REACT(object):
     def _set_nss_order(self, sigsqr):
         coefs_snr = (self.coefs ** 2 - sigsqr) / self.coefs ** 2  # signal-to-noise ratio of the coefficients
         coefs_snr[coefs_snr < 0] = 0.0
-        risk = np.cumsum((np.ones(len(coefs_snr)) - coefs_snr) ** 2 * self.coefs ** 2)
+        risk = np.empty(len(coefs_snr))
+        shrinkage_factor = np.zeros(len(coefs_snr))
+        for j in xrange(len(risk)):
+            shrinkage_factor[:j+1] = 1.0
+            risk[j] = np.mean((shrinkage_factor - coefs_snr) ** 2 * self.coefs ** 2)
         best_order = risk.argmin()
         self.shrinkage_factors = np.ones(len(coefs_snr))
         self.shrinkage_factors[best_order:] = 0.0  # only keep first best_order basis coefficients
@@ -100,3 +106,23 @@ class REACT2D(REACT):
     def fit(self, y, sigsqr, X=None):
         ysmooth = super(REACT2D, self).fit(y.ravel(), X, sigsqr)
         return np.reshape(ysmooth, y.shape)
+
+
+if __name__ == "__main__":
+    image = np.load(os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/data/images_training_rev1/767521_0.npy')
+    y = image[image.shape[0] / 2, :]
+
+    smoother = REACT(method='nss')
+    ysmooth = smoother.fit(y)
+
+    plt.plot(y, 'b.')
+    plt.plot(ysmooth, 'r')
+    plt.show()
+
+    plt.plot(smoother.shrinkage_factors)
+    plt.ylabel('Shrinkage Factor')
+    plt.show()
+
+    plt.plot(smoother.coefs)
+    plt.ylabel('DCT Coefficients')
+    plt.show()
