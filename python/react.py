@@ -56,7 +56,6 @@ class REACT(object):
 
         if self.method == 'monotone':
             # use monotone shrinkage on the basis coefficients
-            print 'Getting shrinkage factors...'
             self._set_shrinkage_factors(sigsqr)
         else:
             # use nested subset selection to choose the order of the basis expansion
@@ -168,10 +167,9 @@ class REACT2D(REACT):
         except ValueError:
             print 'Number of components must be less than the length of y.'
 
-        print 'Building the basis...'
+        # build the 2-D DCT here and then feed into REACT.fit()
         X = self.build_dct(y.shape[0], y.shape[1], self.n_components)
 
-        print 'Getting the coefficients...'
         ysmooth = super(REACT2D, self).fit(y.ravel(), X, sigsqr)
 
         # save the orders of the basis functions
