@@ -29,6 +29,7 @@ class REACT(object):
 
     def fit(self, y, X=None, sigsqr=None):
 
+        # check inputs
         if X is None:
             # build the discrete cosine basis
             if self.n_components is None:
@@ -37,6 +38,11 @@ class REACT(object):
         else:
             if self.n_components is None:
                 n_components = X.shape[1]
+
+        try:
+            n_components <= len(y)
+        except ValueError:
+            print 'Number of components must be less than the length of y.'
 
         self.X = X
         self.coefs = np.dot(X.T, y)
@@ -73,8 +79,24 @@ class REACT(object):
 
         return U
 
-    def interpolate(self, x):
-        pass
+    def interpolate(self, x_idx):
+        try:
+            self.method.lower() == 'dct'
+        except AttributeError:
+            print 'Interpolation only available for DCT basis.'
+
+        n = self.X.shape[0]
+        p = self.X.shape[1]
+        cols = np.arange(p)
+        row_norm = 2 * np.ones(n)
+        row_norm[0] = 1.0
+        row_norm[-1] = 1.0
+        col_norm = 2 * np.ones(p)
+        col_norm[0] = 1.0
+        U = np.cos(np.pi * np.outer(x_idx / n, cols))
+        U *= 0.5 * np.sqrt(2.0 * np.outer(row_norm, col_norm) / (n - 1))
+        y_interp = U.dot(self.coefs)
+        return y_interp
 
     def _set_shrinkage_factors(self, sigsqr):
         coefs_snr = (self.coefs ** 2 - sigsqr) / self.coefs ** 2  # signal-to-noise ratio of the coefficients
@@ -95,13 +117,25 @@ class REACT(object):
 
 
 class REACT2D(REACT):
+    # TODO: set n_components using 2-D analogue
 
-    def interpolate(self, x):
-        super(REACT2D, self).interpolate(x)
+    def interpolate(self, x_idx):
+        super(REACT2D, self).interpolate(x_idx)
 
     @staticmethod
-    def build_dct(n, p):
-        pass
+    def build_dct(nrows, ncols, p):
+        # first build 1-D basis vectors
+        Urows = super(REACT2D, REACT2D).build_dct(nrows, p)
+        Ucols = super(REACT2D, REACT2D).build_dct(ncols, p)
+        # now build 2-d basis as outer products of 1-d basis vectors
+        row_order, col_order = np.mgrid[:p, :p]
+        row_order = row_order.ravel()
+        col_order = col_order.ravel()
+        U = np.empty((nrows * ncols, len(row_order)))
+        for j in xrange(len(row_order)):
+            U[:, j] = np.outer(Urows[:, row_order[j]], Ucols[:, col_order[j]]).ravel()
+
+        return U
 
     def fit(self, y, sigsqr, X=None):
         ysmooth = super(REACT2D, self).fit(y.ravel(), X, sigsqr)
@@ -112,7 +146,7 @@ if __name__ == "__main__":
     image = np.load(os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/data/images_training_rev1/767521_0.npy')
     y = image[image.shape[0] / 2, :]
 
-    smoother = REACT(method='nss')
+    smoother = REACT(method='monotone', n_components=200)
     ysmooth = smoother.fit(y)
 
     plt.plot(y, 'b.')
@@ -123,6 +157,7 @@ if __name__ == "__main__":
     plt.ylabel('Shrinkage Factor')
     plt.show()
 
-    plt.plot(smoother.coefs)
-    plt.ylabel('DCT Coefficients')
+    coefs = smoother.coefs
+    plt.plot(np.sign(coefs) * np.sqrt(np.abs(coefs)), '.')
+    plt.ylabel('Signed Root of DCT Coefficients')
     plt.show()
