@@ -277,7 +277,7 @@ def extract_gal_image(file):
             plt.show()
         plt.close()
         # finally, save the cropped image as a numpy array
-        np.save(training_dir + source_id + '_' + str(c), cropped_im)
+        np.save(test_dir + source_id + '_' + str(c), cropped_im)
 
     # save the mixture of gaussians model parameters
     dataframe = pd.concat(df_list, keys=['1', '2', '3'])
@@ -297,8 +297,12 @@ if __name__ == "__main__":
     # warm up the pool
     pool.map(int, range(multiprocessing.cpu_count() - 1))
 
-    training_files = glob.glob(training_dir + '*.jpg')
-    training_files = training_files[55000:]
+    # training_files = glob.glob(training_dir + '*.jpg')
+    # training_files = training_files[55000:]
+
+    # run on test set images
+    training_files = glob.glob(test_dir + '*.jpg')
+    training_files = training_files[:30000]
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
@@ -316,7 +320,8 @@ if __name__ == "__main__":
     left_to_do = all_sources - already_done
 
     print 'Have', len(left_to_do), 'galaxies left.'
-    training_files = [training_dir + sID + '.jpg' for sID in left_to_do]
+    # training_files = [training_dir + sID + '.jpg' for sID in left_to_do]
+    training_files = [test_dir + sID + '.jpg' for sID in left_to_do]
 
     print len(training_files), 'galaxies...'
     assert len(training_files) == len(left_to_do)
