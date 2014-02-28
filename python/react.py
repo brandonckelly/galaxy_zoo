@@ -22,7 +22,6 @@ class REACT(object):
         self.basis = basis
         self.n_components = n_components
         self.method = method
-        self.Isotonic = IsotonicRegression(y_min=0.0, y_max=1.0, increasing=False)
         self.coefs = np.zeros(1)
         self.shrinkage_factors = np.zeros(1)
         self.X = np.zeros((1, 1))
@@ -34,10 +33,14 @@ class REACT(object):
             # build the discrete cosine basis
             if self.n_components is None:
                 n_components = len(y)
+            else:
+                n_components = self.n_components
             X = self.build_dct(len(y), n_components)
         else:
             if self.n_components is None:
                 n_components = X.shape[1]
+            else:
+                n_components = self.n_components
 
         try:
             n_components <= len(y)
@@ -101,7 +104,10 @@ class REACT(object):
     def _set_shrinkage_factors(self, sigsqr):
         coefs_snr = (self.coefs ** 2 - sigsqr) / self.coefs ** 2  # signal-to-noise ratio of the coefficients
         coefs_snr[coefs_snr < 0] = 0.0
-        self.shrinkage_factors = self.Isotonic.fit_transform(np.arange(len(coefs_snr)), coefs_snr, self.coefs ** 2)
+        x = np.arange(len(coefs_snr))
+        weights = self.coefs ** 2
+        self.shrinkage_factors = \
+            IsotonicRegression(y_min=0.0, y_max=1.0, increasing=False).fit_transform(x, coefs_snr, weights)
 
     def _set_nss_order(self, sigsqr):
         coefs_snr = (self.coefs ** 2 - sigsqr) / self.coefs ** 2  # signal-to-noise ratio of the coefficients
@@ -117,10 +123,17 @@ class REACT(object):
 
 
 class REACT2D(REACT):
-    # TODO: set n_components using 2-D analogue
+    def __init__(self, max_order=None, method='monotone'):
+        # currently only support the DCT for 2-D data
+        super(REACT2D, self).__init__('DCT', max_order, method)
+        self.row_order = np.zeros(1)
+        self.col_order = np.zeros(1)
 
     def interpolate(self, x_idx):
-        super(REACT2D, self).interpolate(x_idx)
+        if True:
+            print 'Interpolation not currently available for REACT2D'
+        else:
+            super(REACT2D, self).interpolate(x_idx)
 
     @staticmethod
     def build_dct(nrows, ncols, p):
@@ -129,21 +142,59 @@ class REACT2D(REACT):
         Ucols = super(REACT2D, REACT2D).build_dct(ncols, p)
         # now build 2-d basis as outer products of 1-d basis vectors
         row_order, col_order = np.mgrid[:p, :p]
-        row_order = row_order.ravel()
-        col_order = col_order.ravel()
+        row_order = row_order.ravel() + 1
+        col_order = col_order.ravel() + 1
+        # sort the basis images by the sum of squares of their orders
+        sqr_order = row_order ** 2 + col_order ** 2
+        s_idx = np.argsort(sqr_order)
+        row_order = row_order[s_idx]
+        col_order = col_order[s_idx]
         U = np.empty((nrows * ncols, len(row_order)))
         for j in xrange(len(row_order)):
-            U[:, j] = np.outer(Urows[:, row_order[j]], Ucols[:, col_order[j]]).ravel()
+            U[:, j] = np.outer(Urows[:, row_order[j]-1], Ucols[:, col_order[j]-1]).ravel()
 
         return U
 
-    def fit(self, y, sigsqr, X=None):
+    def fit(self, y, sigsqr):
+        # build the discrete cosine basis
+        if self.n_components is None:
+            components_from_y = True
+            self.n_components = min(y.shape)
+        else:
+            components_from_y = False
+
+        try:
+            self.n_components <= min(y.shape)
+        except ValueError:
+            print 'Number of components must be less than the length of y.'
+
+        print 'Building the basis...'
+        X = self.build_dct(y.shape[0], y.shape[1], self.n_components)
+
+        print 'Getting the coefficients...'
         ysmooth = super(REACT2D, self).fit(y.ravel(), X, sigsqr)
+
+        # save the orders of the basis functions
+        row_order, col_order = np.mgrid[:self.n_components, :self.n_components]
+        row_order = row_order.ravel() + 1
+        col_order = col_order.ravel() + 1
+        # sort the basis images by the sum of squares of their orders
+        sqr_order = row_order ** 2 + col_order ** 2
+        s_idx = np.argsort(sqr_order)
+        self.row_order = row_order[s_idx]
+        self.col_order = col_order[s_idx]
+
+        if components_from_y:
+            # return n_components to value from constructor
+            self.n_components = None
+
         return np.reshape(ysmooth, y.shape)
 
 
 if __name__ == "__main__":
-    image = np.load(os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/data/images_training_rev1/767521_0.npy')
+    image = np.load(os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/data/images_training_rev1/198659_2.npy')
+
+    # first do 1-D example
     y = image[image.shape[0] / 2, :]
 
     smoother = REACT(method='monotone', n_components=200)
@@ -158,6 +209,35 @@ if __name__ == "__main__":
     plt.show()
 
     coefs = smoother.coefs
+    plt.plot(np.sign(coefs) * np.sqrt(np.abs(coefs)), '.')
+    plt.ylabel('Signed Root of DCT Coefficients')
+    plt.show()
+
+    # now do 2-D example
+    border = np.hstack((image[:, 0], image[:, -1], image[0, 1:-1], image[-1, 1:-1]))
+    sigsqr = np.median(np.abs(border - np.median(border))) ** 2
+    print 'Estimated noise level is', np.sqrt(sigsqr)
+    max_order = min(min(image.shape), 50)
+    print 'Using a maximum order of', max_order
+    smoother2d = REACT2D(max_order=max_order, method='monotone')
+
+    ismooth = smoother2d.fit(image, sigsqr)
+    plt.subplot(221)
+    plt.imshow(image, cmap='hot')
+    plt.title('Original')
+    plt.subplot(222)
+    plt.imshow(ismooth, cmap='hot')
+    plt.title('REACT Fit')
+    plt.subplot(223)
+    plt.imshow(image - ismooth, cmap='hot')
+    plt.title('Residual')
+    plt.show()
+
+    plt.plot(smoother2d.shrinkage_factors)
+    plt.ylabel('Shrinkage Factor')
+    plt.show()
+
+    coefs = smoother2d.coefs
     plt.plot(np.sign(coefs) * np.sqrt(np.abs(coefs)), '.')
     plt.ylabel('Signed Root of DCT Coefficients')
     plt.show()
