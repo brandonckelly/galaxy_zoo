@@ -4,7 +4,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.isotonic import IsotonicRegression
 
-
 class REACT(object):
 
     def __init__(self, basis='DCT', n_components=None, method='monotone'):
@@ -59,10 +58,20 @@ class REACT(object):
 
     @staticmethod
     def build_dct(n, p):
-        U = np.empty((n, p))
+        rows, columns = np.mgrid[:n, :p]
+        U = np.cos(np.pi * rows * columns / (n - 1.0))
+        row_norm = 2 * np.ones(n)
+        row_norm[0] = 1.0
+        row_norm[-1] = 1.0
+        col_norm = 2 * np.ones(p)
+        col_norm[0] = 1.0
+        if p == n:
+            col_norm[-1] = 1.0
+        U *= 0.5 * np.sqrt(2.0 * np.outer(row_norm, col_norm) / (n - 1))
+
         return U
 
-    def predict(self, x):
+    def interpolate(self, x):
         pass
 
     def _set_shrinkage_factors(self, sigsqr):
@@ -81,8 +90,8 @@ class REACT(object):
 
 class REACT2D(REACT):
 
-    def predict(self, x):
-        super(REACT2D, self).predict(x)
+    def interpolate(self, x):
+        super(REACT2D, self).interpolate(x)
 
     @staticmethod
     def build_dct(n, p):
