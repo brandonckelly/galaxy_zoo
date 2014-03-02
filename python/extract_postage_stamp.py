@@ -22,7 +22,7 @@ plot_dir = base_dir + 'plots/'
 
 doshow = False
 file_dir = training_dir
-do_parallel = False
+do_parallel = True
 
 
 # Define a function to make the ellipses
@@ -124,16 +124,19 @@ def extract_gal_image(file):
     distance = distance[sort_idx]
     coords = coords[sort_idx, :]
 
-    # plt.imshow(this_im, cmap='hot')
-    # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-    # plt.xlim(0, ndim[1])
-    # plt.ylim(0, ndim[0])
-    # plt.show()
-    # plt.imshow(filtered_im, cmap='hot')
-    # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-    # plt.xlim(0, ndim[1])
-    # plt.ylim(0, ndim[0])
-    # plt.show()
+    if doshow:
+        plt.imshow(this_im, cmap='hot')
+        plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
+        plt.plot(np.array([0, ndim[1]]), np.array([ndim[0]/2, ndim[0]/2]), 'g-')
+        plt.plot(np.array([ndim[1]/2, ndim[1]/2]), np.array([0, ndim[0]]), 'g-')
+        plt.xlim(0, ndim[1])
+        plt.ylim(0, ndim[0])
+        plt.show()
+        # plt.imshow(filtered_im, cmap='hot')
+        # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
+        # plt.xlim(0, ndim[1])
+        # plt.ylim(0, ndim[0])
+        # plt.show()
 
     # fit a mixture of gaussian functions model to the image, one gaussian for each local maximum
     nsources = len(distance)
@@ -237,29 +240,9 @@ def extract_gal_image(file):
     gauss_params = pd.DataFrame(gauss_params)  # convert to Pandas DataFrame
     gauss_params.index.name = 'GaussianID'
 
-    # crop the image to 2.5-sigma and save it
-    rrange = int(2.5 * np.abs(gauss_params['aminor'][0]))
-    crange = int(2.5 * np.abs(gauss_params['amajor'][0]))
-
-    rmin = int(coords[0, 0] - rrange)
-    if rmin < 0:
-        rmin = 0
-        rmax = 2 * int(coords[0, 0])  # make sure image is symmetric
-    else:
-        rmax = int(coords[0, 0] + rrange)
-        if rmax > ndim[0]:
-            rmax = ndim[0]
-            rmin = int(coords[0, 0]) - (rmax - int(coords[0, 0]))  # make sure image is symmetric
-
-    cmin = int(coords[0, 1] - crange)
-    if cmin < 0:
-        cmin = 0
-        cmax = 2 * int(coords[0, 1])  # make sure image is symmetric
-    else:
-        cmax = int(coords[0, 1] + crange)
-        if cmax > ndim[1]:
-            cmax = ndim[1]
-            cmin = int(coords[0, 1]) - (cmax - int(coords[0, 1]))  # make sure image is symmetric
+    # crop the image to 2.5-sigma
+    arange = int(2.5 * np.abs(gauss_params['aminor'][0]))
+    brange = int(2.5 * np.abs(gauss_params['amajor'][0]))
 
     for band in [1, 0, 2]:  # do middle band first since we want to use its asymmetry info
         this_im = im[:, :, band]
@@ -268,10 +251,64 @@ def extract_gal_image(file):
         base_flux = np.median(border)
 
         image_fit = this_im - base_flux
+
+        # center the image over the center of the galaxy
+        rcent = coords[0, 0]
+        ccent = coords[0, 1]
+        rrange = min(ndim[1] - rcent, rcent)
+        crange = min(ndim[0] - ccent, ccent)
+        rmin = rcent - rrange
+        rmax = rcent + rrange
+        cmin = ccent - crange
+        cmax = ccent + crange
+
+        image_fit = image_fit[rmin:rmax, cmin:cmax]
+
+        if doshow:
+            plt.imshow(image_fit, cmap='hot')
+            plt.plot(np.array([0, image_fit.shape[1]]), np.array([image_fit.shape[0]/2, image_fit.shape[0]/2]), 'g-')
+            plt.plot(np.array([image_fit.shape[1]/2, image_fit.shape[1]/2]), np.array([0, image_fit.shape[0]]), 'g-')
+            plt.xlim(0, ndim[1])
+            plt.ylim(0, ndim[0])
+            plt.title('Centered Image')
+            plt.show()
+
         # rotate the image so that semi-major axis is along the horizontal
         image_fit = rotate(image_fit, gauss_params['theta'][0], reshape=False)
 
-        cropped_im = image_fit[rmin:rmax, cmin:cmax]  # crop the image, remember arrays are row-major
+        if doshow:
+            rcent = image_fit.shape[0] / 2
+            ccent = image_fit.shape[1] / 2
+            plt.imshow(image_fit, cmap='hot')
+            plt.plot(np.array([0, image_fit.shape[1]]), np.array([rcent, rcent]), 'g-')
+            plt.plot(np.array([ccent, ccent]), np.array([0, image_fit.shape[0]]), 'g-')
+            plt.xlim(0, image_fit.shape[1])
+            plt.ylim(0, image_fit.shape[0])
+            plt.title('Rotated Image')
+            plt.show()
+
+        # now crop the image to 2.5 sigma
+        rcent = image_fit.shape[0] / 2
+        ccent = image_fit.shape[1] / 2
+        rrange = min(ndim[1] - rcent, rcent)
+        crange = min(ndim[0] - ccent, ccent)
+        rmin = rcent - arange
+        rmax = rcent + arange
+        cmin = ccent - brange
+        cmax = ccent + brange
+
+        cropped_im = image_fit[rmin:rmax, cmin:cmax].copy()
+
+        if doshow:
+            rcent = cropped_im.shape[0] / 2
+            ccent = cropped_im.shape[1] / 2
+            plt.imshow(cropped_im, cmap='hot')
+            plt.plot(np.array([0, cropped_im.shape[1]]), np.array([rcent, rcent]), 'g-')
+            plt.plot(np.array([ccent, ccent]), np.array([0, cropped_im.shape[0]]), 'g-')
+            plt.xlim(0, cropped_im.shape[1])
+            plt.ylim(0, cropped_im.shape[0])
+            plt.title('Cropped Image')
+            plt.show()
 
         # flip so asymmetry in middle band is always on the right
         if band == 1:
@@ -336,7 +373,8 @@ if __name__ == "__main__":
 
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[:10]
+    files = files[:5000]
+    # files = [file_dir + '248025.jpg', file_dir + '248031.jpg']
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
