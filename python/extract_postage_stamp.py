@@ -20,6 +20,8 @@ test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
 doshow = False
+file_dir = training_dir
+do_parallel = False
 
 
 # Define a function to make the ellipses
@@ -86,175 +88,184 @@ def extract_gal_image(file):
     im = np.array(Image.open(file)).astype(float)
     ndim = im.shape
 
-    df_list = []
-    error_messages = {'SourceID': [], 'Band': [], 'ErrorFlag': []}
+    error_messages = {'SourceID': source_id, 'ErrorFlag': 0}
 
-    # loop over images in each band
-    for c in range(3):
-        print '    ', c, '...'
-        # find local maximum that is closest to center of image
-        this_im = im[:, :, c]
-        flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
-        peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 5-sigma peaks
-        peak_threshold = min(peak_threshold, this_im.max() / 3)
-        coords = peak_local_max(this_im, min_distance=20, threshold_abs=peak_threshold, exclude_border=False)
+    # use image from the middle (r?) band
+    c = 1
+    # find local maximum that is closest to center of image
+    this_im = im[:, :, c]
+    flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
+    peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 8-sigma peaks
+    peak_threshold = min(peak_threshold, this_im.max() / 3)
+    coords = peak_local_max(this_im, min_distance=20, threshold_abs=peak_threshold, exclude_border=False)
 
-        uvals, uidx = np.unique(this_im[coords[:, 0], coords[:, 1]], return_index=True)
-        coords = coords[uidx, :]  # only keep peaks with unique flux values
-        distance = np.sqrt((coords[:, 1] - ndim[0] / 2) ** 2 + (coords[:, 0] - ndim[1] / 2) ** 2)
-        d_idx = distance.argmin()
-        # order the peaks by intensity, only keep top 5
-        sort_idx = np.argsort(this_im[coords[:, 0], coords[:, 1]])[::-1]
-        if d_idx in sort_idx[:5]:
-            distance = distance[sort_idx[:5]]
-            coords = coords[sort_idx[:5]]
-        else:
-            # make sure we keep the central galaxy
-            sort_idx = sort_idx[:4]
-            sort_idx = np.append(sort_idx, d_idx)
-            distance = distance[sort_idx]
-            coords = coords[sort_idx]
+    # make sure global max is in set of local max
+    row, col = np.unravel_index(this_im.argmax(), this_im.shape)
+    coords = np.vstack((coords, np.array([row, col])))
 
-        # order the peaks by distance from the center of the image
-        sort_idx = np.argsort(distance)
+    uvals, uidx = np.unique(this_im[coords[:, 0], coords[:, 1]], return_index=True)
+    coords = coords[uidx, :]  # only keep peaks with unique flux values
+    distance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
+    d_idx = distance.argmin()
+    # order the peaks by intensity, only keep top 5
+    sort_idx = np.argsort(this_im[coords[:, 0], coords[:, 1]])[::-1]
+    if d_idx in sort_idx[:5]:
+        distance = distance[sort_idx[:5]]
+        coords = coords[sort_idx[:5]]
+    else:
+        # make sure we keep the central galaxy
+        sort_idx = sort_idx[:4]
+        sort_idx = np.append(sort_idx, d_idx)
         distance = distance[sort_idx]
-        coords = coords[sort_idx, :]
+        coords = coords[sort_idx]
 
-        # plt.imshow(this_im, cmap='hot')
-        # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-        # plt.xlim(0, ndim[0])
-        # plt.ylim(0, ndim[1])
-        # plt.show()
+    # order the peaks by distance from the center of the image
+    sort_idx = np.argsort(distance)
+    distance = distance[sort_idx]
+    coords = coords[sort_idx, :]
 
-        # fit a mixture of gaussian functions model to the image, one gaussian for each local maximum
-        nsources = len(distance)
-        iparams = np.zeros(nsources * 4)
-        xcentroids = np.zeros(nsources)
-        ycentroids = np.zeros(nsources)
-        for i in range(nsources):
-            centroid = np.array([coords[i, 1], coords[i, 0]])
-            xcentroids[i] = centroid[0]
-            ycentroids[i] = centroid[1]
-            xcent = np.arange(ndim[0]) - centroid[0]
-            ycent = np.arange(ndim[1]) - centroid[1]
-            Myy = np.sum(ycent ** 2 * this_im[:, coords[i, 1]]) / np.sum(this_im[:, coords[i, 1]])
-            Mxx = np.sum(xcent ** 2 * this_im[coords[i, 0], :]) / np.sum(this_im[coords[i, 0], :])
-            if i == 0:
-                # main galaxy, so make initial guess of sigmas no larger than 1/4 length of image
-                Mxx_min = (ndim[0] / 4.0) ** 2
-                Myy_min = (ndim[1] / 4.0) ** 2
-            else:
-                # contaminants, make initial guess of sigmas no larger than 20 pixels
-                Mxx_min = 20.0 ** 2
-                Myy_min = 20.0 ** 2
-            Mxx = min(Mxx, Mxx_min)
-            Myy = min(Myy, Myy_min)
+    # plt.imshow(this_im, cmap='hot')
+    # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
+    # plt.xlim(0, ndim[0])
+    # plt.ylim(0, ndim[1])
+    # plt.show()
 
-            amp = this_im[centroid[1], centroid[0]]
+    # fit a mixture of gaussian functions model to the image, one gaussian for each local maximum
+    nsources = len(distance)
+    iparams = np.zeros(nsources * 4)
+    xcentroids = np.zeros(nsources)
+    ycentroids = np.zeros(nsources)
+    for i in range(nsources):
+        centroid = np.array([coords[i, 1], coords[i, 0]])
+        xcentroids[i] = centroid[0]
+        ycentroids[i] = centroid[1]
+        xcent = np.arange(ndim[0]) - centroid[0]
+        ycent = np.arange(ndim[1]) - centroid[1]
+        Myy = np.sum(ycent ** 2 * this_im[:, coords[i, 1]]) / np.sum(this_im[:, coords[i, 1]])
+        Mxx = np.sum(xcent ** 2 * this_im[coords[i, 0], :]) / np.sum(this_im[coords[i, 0], :])
+        if i == 0:
+            # main galaxy, so make initial guess of sigmas no larger than 1/4 length of image
+            Mxx_min = (ndim[0] / 4.0) ** 2
+            Myy_min = (ndim[1] / 4.0) ** 2
+        else:
+            # contaminants, make initial guess of sigmas no larger than 20 pixels
+            Mxx_min = 20.0 ** 2
+            Myy_min = 20.0 ** 2
+        Mxx = min(Mxx, Mxx_min)
+        Myy = min(Myy, Myy_min)
 
-            iparams[4 * i] = np.log(amp)
-            iparams[4 * i + 1] = 0.5 * np.log(Mxx)
-            iparams[4 * i + 2] = 0.5 * np.log(Myy)
+        amp = this_im[centroid[1], centroid[0]]
 
+        iparams[4 * i] = np.log(amp)
+        iparams[4 * i + 1] = 0.5 * np.log(Mxx)
+        iparams[4 * i + 2] = 0.5 * np.log(Myy)
+
+    # subtract off the base level of the image as the median of the values along the border
+    border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
+    base_flux = np.median(border)
+
+    image_fit = this_im - base_flux
+    rowgrid, colgrid = np.mgrid[:ndim[0], :ndim[1]]
+
+    if ~np.all(np.isfinite(iparams)):
+        # non-finite initial guess, skip this source
+        print 'Non-finite initial guess at parameters detected for source', source_id, ', band', c
+        error_messages['ErrorFlag'] = -99
+        return error_messages
+
+
+    params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
+                                       args=(image_fit.ravel(), colgrid.ravel(), rowgrid.ravel(),
+                                             xcentroids, ycentroids), ftol=5e-2, xtol=5e-2)
+
+    # if error, then save the info for analysis later
+    error_messages['ErrorFlag'] = success
+
+    if ~np.all(np.isfinite(params)):
+        # don't crop image and save if non-finite parameters
+        print 'Non-finite parameters detected for source', source_id, ', band', c
+        return error_messages
+
+    # get ellipse parameters for each Gaussian function
+    rotang = np.zeros(nsources)
+    amajor = np.zeros(nsources)
+    aminor = np.zeros(nsources)
+    gidx = 4 * np.arange(nsources)
+    rho = tanh(params[gidx + 3])
+    xsigma = np.exp(params[gidx + 1])
+    ysigma = np.exp(params[gidx + 2])
+    for k in range(nsources):
+        radius = np.sqrt(xsigma[k] ** 2 + ysigma[k] ** 2)
+        covar = np.zeros((2, 2))
+        covar[0, 0] = xsigma[k] ** 2
+        covar[1, 1] = ysigma[k] ** 2
+        covar[0, 1] = rho[k] * xsigma[k] * ysigma[k]
+        covar[1, 0] = covar[0, 1]
+
+        vals, vecs = np.linalg.eigh(covar)
+        order = vals.argsort()[::-1]
+        vals, vecs = vals[order], vecs[:, order]
+
+        rotang[k] = np.arctan2(*vecs[:, 0][::-1])
+        amajor[k], aminor[k] = np.sqrt(vals)  # major and minor axes of ellipse
+
+        this_centroid = np.array([xcentroids[k], ycentroids[k]])
+        gal_centroid = np.array([xcentroids[0], ycentroids[0]])
+        centdiff = this_centroid - gal_centroid
+        gal_covar = np.zeros_like(covar)
+        gal_covar[0, 0] = xsigma[0] ** 2
+        gal_covar[1, 1] = ysigma[0] ** 2
+        gal_covar[0, 1] = rho[0] * xsigma[0] * ysigma[0]
+        gal_covar[1, 0] = covar[0, 1]
+
+        mah_distance = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(gal_covar), centdiff)))
+        if k > 0 and radius < 20.0 and np.exp(params[4 * k] - params[0]) > 0.2 and mah_distance < 5.0:
+            # subtract any nearby sources that look like stars and are 20% as bright as the central galaxy
+            gauss_image = bivariate_gaussian(colgrid, rowgrid, xsigma[k], ysigma[k], rho[k], xcentroids[k],
+                                             ycentroids[k])
+            image_fit -= np.exp(params[4 * k]) * gauss_image
+
+    # convert parameter output to a dictionary
+    gauss_params = {'amplitude': np.exp(params[gidx]), 'xcent': xcentroids, 'ycent': ycentroids,
+                    'xsigma': xsigma, 'ysigma': ysigma, 'rho': rho, 'theta': np.degrees(rotang),
+                    'amajor': amajor, 'aminor': aminor}
+    gauss_params = pd.DataFrame(gauss_params)  # convert to Pandas DataFrame
+    gauss_params.index.name = 'GaussianID'
+
+    # crop the image to 2.5-sigma and save it
+    rrange = int(2.5 * np.abs(gauss_params['aminor'][0]))
+    crange = int(2.5 * np.abs(gauss_params['amajor'][0]))
+
+    rmin = int(coords[0, 0] - rrange)
+    if rmin < 0:
+        rmin = 0
+        rmax = 2 * int(coords[0, 0])  # make sure image is symmetric
+    else:
+        rmax = int(coords[0, 0] + rrange)
+        if rmax > ndim[0]:
+            rmax = ndim[0]
+            rmin = int(coords[0, 0]) - (rmax - int(coords[0, 0]))  # make sure image is symmetric
+
+    cmin = int(coords[0, 1] - crange)
+    if cmin < 0:
+        cmin = 0
+        cmax = 2 * int(coords[0, 1])  # make sure image is symmetric
+    else:
+        cmax = int(coords[0, 1] + crange)
+        if cmax > ndim[1]:
+            cmax = ndim[1]
+            cmin = int(coords[0, 1]) - (cmax - int(coords[0, 1]))  # make sure image is symmetric
+
+    for band in range(3):
+        this_im = im[:, :, band]
         # subtract off the base level of the image as the median of the values along the border
         border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
         base_flux = np.median(border)
 
         image_fit = this_im - base_flux
-        rowgrid, colgrid = np.mgrid[:ndim[0], :ndim[1]]
-
-        if ~np.all(np.isfinite(iparams)):
-            # non-finite initial guess, skip this source
-            print 'Non-finite initial guess at parameters detected for source', source_id, ', band', c
-            error_messages['SourceID'].append(source_id)
-            error_messages['Band'].append(c)
-            error_messages['ErrorFlag'].append(-99)
-            continue
-
-        params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
-                                           args=(image_fit.ravel(), colgrid.ravel(), rowgrid.ravel(),
-                                                 xcentroids, ycentroids), ftol=5e-2, xtol=5e-2)
-
-        # if error, then save the info for analysis later
-        error_messages['SourceID'].append(source_id)
-        error_messages['Band'].append(c)
-        error_messages['ErrorFlag'].append(success)
-
-        if ~np.all(np.isfinite(params)):
-            # don't crop image and save if non-finite parameters
-            print 'Non-finite parameters detected for source', source_id, ', band', c
-            continue
-
-        # get ellipse parameters for each Gaussian function
-        rotang = np.zeros(nsources)
-        amajor = np.zeros(nsources)
-        aminor = np.zeros(nsources)
-        gidx = 4 * np.arange(nsources)
-        rho = tanh(params[gidx + 3])
-        xsigma = np.exp(params[gidx + 1])
-        ysigma = np.exp(params[gidx + 2])
-        for k in range(nsources):
-            radius = np.sqrt(xsigma[k] **2 + ysigma[k] ** 2)
-            covar = np.zeros((2, 2))
-            covar[0, 0] = xsigma[k] ** 2
-            covar[1, 1] = ysigma[k] ** 2
-            covar[0, 1] = rho[k] * xsigma[k] * ysigma[k]
-            covar[1, 0] = covar[0, 1]
-
-            vals, vecs = np.linalg.eigh(covar)
-            order = vals.argsort()[::-1]
-            vals, vecs = vals[order], vecs[:, order]
-
-            rotang[k] = np.arctan2(*vecs[:, 0][::-1])
-            amajor[k], aminor[k] = np.sqrt(vals)  # major and minor axes of ellipse
-
-            this_centroid = np.array([xcentroids[k], ycentroids[k]])
-            gal_centroid = np.array([xcentroids[0], ycentroids[0]])
-            centdiff = this_centroid - gal_centroid
-            gal_covar = np.zeros_like(covar)
-            gal_covar[0, 0] = xsigma[0] ** 2
-            gal_covar[1, 1] = ysigma[0] ** 2
-            gal_covar[0, 1] = rho[0] * xsigma[0] * ysigma[0]
-            gal_covar[1, 0] = covar[0, 1]
-
-            mah_distance = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(gal_covar), centdiff)))
-            if k > 0 and radius < 20.0 and np.exp(params[4 * k] - params[0]) > 0.2 and mah_distance < 5.0:
-                # subtract any nearby sources that look like stars and are 20% as bright as the central galaxy
-                gauss_image = bivariate_gaussian(colgrid, rowgrid, xsigma[k], ysigma[k], rho[k], xcentroids[k],
-                                                 ycentroids[k])
-                image_fit -= np.exp(params[4 * k]) * gauss_image
-
-        # convert parameter output to a dictionary
-        gauss_params = {'amplitude': np.exp(params[gidx]), 'xcent': xcentroids, 'ycent': ycentroids,
-                        'xsigma': xsigma, 'ysigma': ysigma, 'rho': rho, 'theta': np.degrees(rotang),
-                        'amajor': amajor, 'aminor': aminor}
-        gauss_params = pd.DataFrame(gauss_params)  # convert to Pandas DataFrame
-        gauss_params.index.name = 'GaussianID'
-        df_list.append(gauss_params)
-
-        # crop the image to 3-sigma and save it
-        xrange = 4.0 * np.abs(gauss_params['amajor'][0])
-        yrange = 4.0 * np.abs(gauss_params['aminor'][0])
-        xmin = int(coords[0, 1] - xrange)
-        if xmin < 0:
-            xmin = 0
-        xmax = int(coords[0, 1] + xrange)
-        if xmax > ndim[0]:
-            xmax = ndim[0]
-        ymin = int(coords[0, 0] - yrange)
-        if ymin < 0:
-            ymin = 0
-        ymax = int(coords[0, 0] + yrange)
-        if ymax > ndim[1]:
-            ymax = ndim[1]
-
         # rotate the image so that semi-major axis is along the horizontal
         image_fit = rotate(image_fit, gauss_params['theta'][0], reshape=False)
-        cropped_im = image_fit[ymin:ymax, xmin:xmax]  # crop the image, remember arrays are row-major
-
-        # make the floor value zero
-        border = np.hstack((cropped_im[:, 0], cropped_im[:, -1], cropped_im[0, 1:-1], cropped_im[-1, 1:-1]))
-        cropped_im -= np.median(border)
+        cropped_im = image_fit[rmin:rmax, cmin:cmax]  # crop the image, remember arrays are row-major
 
         # save a plot of the image with the Gaussian ellipses and the cropped image
         plt.clf()
@@ -271,22 +282,19 @@ def extract_gal_image(file):
         plt.ylim(0, ndim[1])
         plt.subplot(122)
         plt.imshow(cropped_im, cmap='hot')
+        plt.plot(cropped_im.shape[1] / 2, cropped_im.shape[0] / 2, 'b+')
         plt.title('Cropped')
-        plt.savefig(plot_dir + source_id + '_' + str(c) + '.png')
+        plt.savefig(plot_dir + source_id + '_' + str(band) + '.png')
         if doshow:
             plt.show()
         plt.close()
         # finally, save the cropped image as a numpy array
-        np.save(test_dir + source_id + '_' + str(c), cropped_im)
+        np.save(test_dir + source_id + '_' + str(band), cropped_im)
 
-    # save the mixture of gaussians model parameters
-    dataframe = pd.concat(df_list, keys=['1', '2', '3'])
-    dataframe.index.names = ('Band', 'GaussianID')
-    dataframe.to_csv(data_dir + 'gauss_fit/' + source_id + '_gauss_params.csv')
+        # save the mixture of gaussians model parameters
+        gauss_params.to_csv(data_dir + 'gauss_fit/' + source_id + '_gauss_params.csv')
 
-    err_df = pd.DataFrame(error_messages).set_index('Band')
-
-    return err_df
+    return error_messages
 
 
 if __name__ == "__main__":
@@ -301,8 +309,8 @@ if __name__ == "__main__":
     # training_files = training_files[55000:]
 
     # run on test set images
-    training_files = glob.glob(test_dir + '*.jpg')
-    training_files = training_files[:30000]
+    files = glob.glob(file_dir + '*.jpg')
+    files = files[:2]
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
@@ -315,31 +323,24 @@ if __name__ == "__main__":
 
     already_done = already_done1 & already_done2 & already_done3
     print 'Already done', len(already_done), 'galaxies.'
-    all_sources = set([tfile.split('/')[-1].split('.')[0] for tfile in training_files])
+    all_sources = set([tfile.split('/')[-1].split('.')[0] for tfile in files])
 
     left_to_do = all_sources - already_done
 
     print 'Have', len(left_to_do), 'galaxies left.'
     # training_files = [training_dir + sID + '.jpg' for sID in left_to_do]
-    training_files = [test_dir + sID + '.jpg' for sID in left_to_do]
+    files = [file_dir + sID + '.jpg' for sID in left_to_do]
 
-    print len(training_files), 'galaxies...'
-    assert len(training_files) == len(left_to_do)
+    print len(files), 'galaxies...'
+    assert len(files) == len(left_to_do)
     print 'Source ID...'
 
-    do_parallel = True
     if do_parallel:
-        err_dfs = pool.map(extract_gal_image, training_files)
+        err_msgs = pool.map(extract_gal_image, files)
     else:
-        err_dfs = map(extract_gal_image, training_files)
+        err_msgs = map(extract_gal_image, files)
 
-    source_ids = []
-    for file in training_files:
-        source_ids.append(file.split('/')[-1].split('.')[0])
-
-    err_df = pd.concat(err_dfs, keys=source_ids)
-    err_df = err_df.drop('SourceID', 1)
-    err_df.index.names = ('SourceID', 'Band')
+    err_df = pd.DataFrame(err_msgs).set_index('SourceID')
     # dump error messages to CSV file
     err_df.to_csv(data_dir + 'gauss_fit/error_messages.csv')
 
@@ -347,4 +348,4 @@ if __name__ == "__main__":
 
     tdiff = end_time - start_time
     tdiff = tdiff.total_seconds()
-    print 'Did', len(training_files), 'galaxies in', tdiff / 60.0 / 60.0, 'hours.'
+    print 'Did', len(files), 'galaxies in', tdiff / 60.0 / 60.0, 'hours.'
