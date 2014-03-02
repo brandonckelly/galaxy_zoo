@@ -7,6 +7,7 @@ import os
 import glob
 from skimage.feature import peak_local_max
 from scipy.ndimage.interpolation import rotate
+from scipy.ndimage import median_filter
 import pandas as pd
 from scipy import optimize
 import datetime
@@ -97,18 +98,17 @@ def extract_gal_image(file):
     flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
     peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 8-sigma peaks
     peak_threshold = min(peak_threshold, this_im.max() / 3)
-    coords = peak_local_max(this_im, min_distance=20, threshold_abs=peak_threshold, exclude_border=False)
+    # apply median filter before finding local maxima
+    filtered_im = median_filter(this_im, size=3)
+    coords = peak_local_max(filtered_im, min_distance=20, threshold_abs=peak_threshold,
+                            exclude_border=False)
 
-    # make sure global max is in set of local max
-    row, col = np.unravel_index(this_im.argmax(), this_im.shape)
-    coords = np.vstack((coords, np.array([row, col])))
-
-    uvals, uidx = np.unique(this_im[coords[:, 0], coords[:, 1]], return_index=True)
+    uvals, uidx = np.unique(filtered_im[coords[:, 0], coords[:, 1]], return_index=True)
     coords = coords[uidx, :]  # only keep peaks with unique flux values
     distance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
     d_idx = distance.argmin()
     # order the peaks by intensity, only keep top 5
-    sort_idx = np.argsort(this_im[coords[:, 0], coords[:, 1]])[::-1]
+    sort_idx = np.argsort(filtered_im[coords[:, 0], coords[:, 1]])[::-1]
     if d_idx in sort_idx[:5]:
         distance = distance[sort_idx[:5]]
         coords = coords[sort_idx[:5]]
@@ -126,8 +126,13 @@ def extract_gal_image(file):
 
     # plt.imshow(this_im, cmap='hot')
     # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-    # plt.xlim(0, ndim[0])
-    # plt.ylim(0, ndim[1])
+    # plt.xlim(0, ndim[1])
+    # plt.ylim(0, ndim[0])
+    # plt.show()
+    # plt.imshow(filtered_im, cmap='hot')
+    # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
+    # plt.xlim(0, ndim[1])
+    # plt.ylim(0, ndim[0])
     # plt.show()
 
     # fit a mixture of gaussian functions model to the image, one gaussian for each local maximum
@@ -256,7 +261,7 @@ def extract_gal_image(file):
             cmax = ndim[1]
             cmin = int(coords[0, 1]) - (cmax - int(coords[0, 1]))  # make sure image is symmetric
 
-    for band in range(3):
+    for band in [1, 0, 2]:  # do middle band first since we want to use its asymmetry info
         this_im = im[:, :, band]
         # subtract off the base level of the image as the median of the values along the border
         border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
@@ -265,7 +270,26 @@ def extract_gal_image(file):
         image_fit = this_im - base_flux
         # rotate the image so that semi-major axis is along the horizontal
         image_fit = rotate(image_fit, gauss_params['theta'][0], reshape=False)
+
         cropped_im = image_fit[rmin:rmax, cmin:cmax]  # crop the image, remember arrays are row-major
+
+        # flip so asymmetry in middle band is always on the right
+        if band == 1:
+            column_collapse = cropped_im.mean(axis=0)
+            column_collapse = column_collapse / np.sum(np.abs(column_collapse))
+            col_asymmetry = np.sum(np.abs(column_collapse) * (np.arange(cropped_im.shape[1]) -
+                                                              cropped_im.shape[1] / 2) ** 3)
+        if np.sign(col_asymmetry) < 0:
+            # image is asymmetric toward the left, flip it
+            cropped_im = cropped_im[:, ::-1]
+        # flip so asymmetry is always on the top
+        if band == 1:
+            row_collapse = cropped_im.mean(axis=1)
+            row_collapse = row_collapse / np.sum(np.abs(row_collapse))
+            row_asymmetry = np.sum(np.abs(row_collapse) * (np.arange(cropped_im.shape[0]) -
+                                                           cropped_im.shape[0] / 2) ** 3)
+        if np.sign(row_asymmetry) < 0:
+            cropped_im = cropped_im[::-1, :]
 
         # save a plot of the image with the Gaussian ellipses and the cropped image
         plt.clf()
@@ -283,6 +307,8 @@ def extract_gal_image(file):
         plt.subplot(122)
         plt.imshow(cropped_im, cmap='hot')
         plt.plot(cropped_im.shape[1] / 2, cropped_im.shape[0] / 2, 'b+')
+        plt.xlim(0, cropped_im.shape[1])
+        plt.ylim(0, cropped_im.shape[0])
         plt.title('Cropped')
         plt.savefig(plot_dir + source_id + '_' + str(band) + '.png')
         if doshow:
@@ -310,7 +336,7 @@ if __name__ == "__main__":
 
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[:2]
+    files = files[:10]
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
