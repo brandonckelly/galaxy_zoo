@@ -373,7 +373,7 @@ if __name__ == "__main__":
 
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[:5000]
+    files = files[20000:35000]
     # files = [file_dir + '248025.jpg', file_dir + '248031.jpg']
 
     # find which ones we've already done
