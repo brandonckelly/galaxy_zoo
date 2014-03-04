@@ -20,9 +20,9 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-doshow = False
-file_dir = training_dir
-do_parallel = True
+doshow = True
+file_dir = test_dir
+do_parallel = False
 
 
 # Define a function to make the ellipses
@@ -103,7 +103,20 @@ def extract_gal_image(file):
     coords = peak_local_max(filtered_im, min_distance=20, threshold_abs=peak_threshold,
                             exclude_border=False)
 
+    cdistance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
+    central_idx = cdistance.argmin()
     uvals, uidx = np.unique(filtered_im[coords[:, 0], coords[:, 1]], return_index=True)
+    # make sure local max or duplicate closest to center is in uidx
+    min_distance = 1e300
+    for u in uidx:
+        distance = np.sqrt((coords[u, 0] - coords[central_idx, 0]) ** 2 + (coords[u, 1] - coords[central_idx, 1]) ** 2)
+        min_distance = min(distance, min_distance)
+    # if minimum distance between coords[uidx, :] and coords[central_idx, :] < 5, local max closest to center of image
+    # is not in the uidx, so add it
+    if min_distance > 5:
+        # make sure peak closest to center of image is included
+        uidx = np.append(uidx, central_idx)
+
     coords = coords[uidx, :]  # only keep peaks with unique flux values
     distance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
     d_idx = distance.argmin()
@@ -373,8 +386,10 @@ if __name__ == "__main__":
 
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[20000:35000]
-    # files = [file_dir + '248025.jpg', file_dir + '248031.jpg']
+    files = files[:15000]
+    id_list = ['160788', '175306', '114125', '109698', '175870', '216293', '194473', '238866', '216338']
+    files = [file_dir + id + '.jpg' for id in id_list]
+    files = ['238866']
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
