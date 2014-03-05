@@ -20,9 +20,9 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-doshow = True
+doshow = False
 file_dir = test_dir
-do_parallel = False
+do_parallel = True
 
 
 # Define a function to make the ellipses
@@ -387,9 +387,9 @@ if __name__ == "__main__":
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
     files = files[:15000]
-    id_list = ['160788', '175306', '114125', '109698', '175870', '216293', '194473', '238866', '216338']
-    files = [file_dir + id + '.jpg' for id in id_list]
-    files = ['238866']
+    files = files[-40:]
+    # id_list = ['160788', '175306', '114125', '109698', '175870', '216293', '194473', '238866', '216338']
+    # files = [file_dir + id + '.jpg' for id in id_list]
 
     # find which ones we've already done
     already_done1 = glob.glob(plot_dir + '*_0.png')
@@ -420,6 +420,11 @@ if __name__ == "__main__":
         err_msgs = map(extract_gal_image, files)
 
     err_df = pd.DataFrame(err_msgs).set_index('SourceID')
+    # if CSV file already exists, append to end of it
+    if os.path.isfile(data_dir + 'gauss_fit/error_messages.csv'):
+        err_old = pd.read_csv(data_dir + 'gauss_fit/error_messages.csv').set_index('SourceID')
+        err_old = err_old.drop('Unnamed: 0', 1)
+        err_df = pd.concat([err_old, err_df])
     # dump error messages to CSV file
     err_df.to_csv(data_dir + 'gauss_fit/error_messages.csv')
 

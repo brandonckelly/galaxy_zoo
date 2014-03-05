@@ -8,6 +8,8 @@ import glob
 import multiprocessing
 import cPickle
 import datetime
+import cProfile
+import pstats
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -19,11 +21,14 @@ doshow = False
 image_dir = training_dir
 max_order0 = 50
 verbose = True
+do_parallel = False
 
 
 def do_dct_transform(args):
 
     galaxy_id = args
+    print 'Galaxy ID:', galaxy_id
+
     # first get flux ratios (colors)
     total_flux = 0.0
     for band in range(3):
@@ -39,7 +44,6 @@ def do_dct_transform(args):
         max_order = min(min(image.shape), max_order0)
 
         if verbose:
-            print 'Galaxy ID:', galaxy_id
             print 'Band:', band
             print 'Estimated noise level:', np.sqrt(sigsqr)
             print 'Noise relative to center:', np.sqrt(sigsqr) / image[image.shape[0]/2, image.shape[1]/2]
@@ -64,6 +68,8 @@ def do_dct_transform(args):
         plt.xlabel('Index of Basis Function')
         # plt.tight_layout()
         plt.savefig(plot_dir + galaxy_id + '_' + str(band) + '_DCT.png')
+        if doshow:
+            plt.show()
         plt.close()
 
         smoother2d.galaxy_id = galaxy_id
@@ -90,12 +96,14 @@ if __name__ == "__main__":
 
     galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
     galaxy_ids = list(galaxy_ids)
-    galaxy_ids = galaxy_ids[:2]
+    galaxy_ids = galaxy_ids[:10]
 
-    do_parallel = False
     if not do_parallel:
-        do_dct_transform(galaxy_ids[0])
-        # map(do_dct_transform, galaxy_ids)
+        # do_dct_transform(galaxy_ids)
+        # cProfile.run('do_dct_transform(galaxy_ids[0])', 'dctstats')
+        # profile = pstats.Stats('dctstats')
+        # profile.sort_stats('cumulative').print_stats(25)
+        map(do_dct_transform, galaxy_ids)
     else:
         pool.map(do_dct_transform, galaxy_ids)
 

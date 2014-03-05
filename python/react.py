@@ -20,11 +20,12 @@ class REACT(object):
             print 'method must be either monotone or nss.'
 
         self.basis = basis
+        self.nfreq = 1
+        self.ncomp = 1
         self.n_components = n_components
         self.method = method
         self.coefs = np.zeros(1)
         self.shrinkage_factors = np.zeros(1)
-        self.X = np.zeros((1, 1))
 
     def fit(self, y, X=None, sigsqr=None):
 
@@ -36,18 +37,20 @@ class REACT(object):
             else:
                 n_components = self.n_components
             X = self.build_dct(len(y), n_components)
+            self.nfreq = len(y)
+            self.ncomp = n_components
         else:
             if self.n_components is None:
                 n_components = X.shape[1]
             else:
                 n_components = self.n_components
+            self.ncomp = n_components
 
         try:
             n_components <= len(y)
         except ValueError:
             print 'Number of components must be less than the length of y.'
 
-        self.X = X
         self.coefs = np.dot(X.T, y)
 
         if sigsqr is None:
@@ -87,8 +90,8 @@ class REACT(object):
         except AttributeError:
             print 'Interpolation only available for DCT basis.'
 
-        n = self.X.shape[0]
-        p = self.X.shape[1]
+        n = self.nfreq
+        p = self.ncomp
         cols = np.arange(p)
         row_norm = 2 * np.ones(n)
         row_norm[0] = 1.0
