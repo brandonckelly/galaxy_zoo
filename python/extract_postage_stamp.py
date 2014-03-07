@@ -386,7 +386,7 @@ if __name__ == "__main__":
 
     # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[:15000]
+    files = files[40000:50000]
     # id_list = ['160788', '175306', '114125', '109698', '175870', '216293', '194473', '238866', '216338']
     # files = [file_dir + id + '.jpg' for id in id_list]
 
