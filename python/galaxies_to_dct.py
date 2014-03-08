@@ -21,7 +21,7 @@ doshow = False
 image_dir = training_dir
 max_order0 = 50
 verbose = False
-do_parallel = False
+do_parallel = True
 
 
 def do_dct_transform(args):
@@ -48,6 +48,14 @@ def do_dct_transform(args):
             print 'Estimated noise level:', np.sqrt(sigsqr)
             print 'Noise relative to center:', np.sqrt(sigsqr) / image[image.shape[0]/2, image.shape[1]/2]
             print 'Image size:', image.shape
+
+        # check image size, values
+        if min(image.shape) < 5:
+            print "Image dimensions need to be at least 5 pixels on either side."
+            continue
+        if not np.all(np.isfinite(image)):
+            print "Non-finite values detected in image, ignoring."
+            continue
 
         smoother2d = REACT2D(max_order=max_order, method='monotone')
         ismooth = smoother2d.fit(image, sigsqr)
@@ -81,9 +89,10 @@ def do_dct_transform(args):
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
 
-    pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
+    njobs = 4
+    pool = multiprocessing.Pool(njobs)
     # warm up the pool
-    pool.map(int, range(multiprocessing.cpu_count() - 1))
+    pool.map(int, range(njobs))
 
     # run on training set images
     files_0 = glob.glob(image_dir + '*_0.npy')
@@ -96,7 +105,7 @@ if __name__ == "__main__":
 
     galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
     galaxy_ids = list(galaxy_ids)
-    galaxy_ids = galaxy_ids[10:14]
+    galaxy_ids = galaxy_ids[:10000]
 
     # find which ones we've already done
     already_done1 = glob.glob(data_dir + 'react/' + '*_0_dct.pickle')
