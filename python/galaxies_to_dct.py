@@ -20,8 +20,8 @@ plot_dir = base_dir + 'plots/'
 doshow = False
 image_dir = training_dir
 max_order0 = 50
-verbose = True
-do_parallel = False
+verbose = False
+do_parallel = True
 
 
 def do_dct_transform(args):
@@ -48,6 +48,14 @@ def do_dct_transform(args):
             print 'Estimated noise level:', np.sqrt(sigsqr)
             print 'Noise relative to center:', np.sqrt(sigsqr) / image[image.shape[0]/2, image.shape[1]/2]
             print 'Image size:', image.shape
+
+        # check image size, values
+        if min(image.shape) < 5:
+            print "Image dimensions need to be at least 5 pixels on either side."
+            continue
+        if not np.all(np.isfinite(image)):
+            print "Non-finite values detected in image, ignoring."
+            continue
 
         smoother2d = REACT2D(max_order=max_order, method='monotone')
         ismooth = smoother2d.fit(image, sigsqr)
@@ -81,9 +89,10 @@ def do_dct_transform(args):
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
 
-    pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
+    njobs = 7
+    pool = multiprocessing.Pool(njobs)
     # warm up the pool
-    pool.map(int, range(multiprocessing.cpu_count() - 1))
+    pool.map(int, range(njobs))
 
     # run on training set images
     files_0 = glob.glob(image_dir + '*_0.npy')
@@ -96,16 +105,33 @@ if __name__ == "__main__":
 
     galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
     galaxy_ids = list(galaxy_ids)
-    galaxy_ids = galaxy_ids[:10]
+    galaxy_ids = galaxy_ids[10000:]
+
+    # find which ones we've already done
+    already_done1 = glob.glob(data_dir + 'react/' + '*_0_dct.pickle')
+    already_done2 = glob.glob(data_dir + 'react/' + '*_1_dct.pickle')
+    already_done3 = glob.glob(data_dir + 'react/' + '*_2_dct.pickle')
+
+    already_done1 = set([s.split('/')[-1].split('_')[0] for s in already_done1])
+    already_done2 = set([s.split('/')[-1].split('_')[0] for s in already_done2])
+    already_done3 = set([s.split('/')[-1].split('_')[0] for s in already_done3])
+
+    already_done = already_done1 & already_done2 & already_done3
+
+    print 'Already done', len(already_done), 'galaxies.'
+
+    left_to_do = set(galaxy_ids) - already_done
+
+    print 'Have', len(left_to_do), 'galaxies left.'
 
     if not do_parallel:
         # do_dct_transform(galaxy_ids)
         # cProfile.run('do_dct_transform(galaxy_ids[0])', 'dctstats')
         # profile = pstats.Stats('dctstats')
         # profile.sort_stats('cumulative').print_stats(25)
-        map(do_dct_transform, galaxy_ids)
+        map(do_dct_transform, left_to_do)
     else:
-        pool.map(do_dct_transform, galaxy_ids)
+        pool.map(do_dct_transform, left_to_do)
 
     end_time = datetime.datetime.now()
 
