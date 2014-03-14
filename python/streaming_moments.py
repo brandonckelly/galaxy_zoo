@@ -19,14 +19,20 @@ class StreamingMoments(object):
 
     def __call__(self, x):
         try:
-            len(x) == self.nx
+            len(x) == self.dim
         except ValueError:
-            print "Length of input must be", self.nx
+            print "Length of input must be", self.dim
+            return
         self.nx += 1
 
         self.mean = (self.mean * (self.nx - 1) + x) / self.nx
-        self.ssqr = (self.ssqr * (self.nx - 1) + np.outer(x, x)) / self.nx
-        self.var = self.ssqr - np.outer(self.mean, self.mean)
+
+        if self.dim == 1:
+            self.ssqr = (self.ssqr * (self.nx - 1) + x ** 2) / self.nx
+            self.var = self.ssqr - self.mean ** 2
+        else:
+            self.ssqr = (self.ssqr * (self.nx - 1) + np.outer(x, x)) / self.nx
+            self.var = self.ssqr - np.outer(self.mean, self.mean)
 
         return self.mean, self.var
 
