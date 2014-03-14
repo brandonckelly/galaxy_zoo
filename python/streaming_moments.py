@@ -3,6 +3,7 @@ __author__ = 'brandonkelly'
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class StreamingMoments(object):
 
     def __init__(self, dim):
