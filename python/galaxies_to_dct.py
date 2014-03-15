@@ -18,7 +18,7 @@ test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
 doshow = False
-image_dir = training_dir
+image_dir = test_dir
 max_order0 = 50
 verbose = False
 do_parallel = True
@@ -89,7 +89,7 @@ def do_dct_transform(args):
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
 
-    njobs = 7
+    njobs = 4
     pool = multiprocessing.Pool(njobs)
     # warm up the pool
     pool.map(int, range(njobs))
@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
     galaxy_ids = list(galaxy_ids)
-    galaxy_ids = galaxy_ids[10000:]
+    galaxy_ids = galaxy_ids[15000:30000]
 
     # find which ones we've already done
     already_done1 = glob.glob(data_dir + 'react/' + '*_0_dct.pickle')
