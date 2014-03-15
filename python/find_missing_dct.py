@@ -23,6 +23,7 @@ train_dir = base_dir + 'data/images_training_rev1/'
 
 max_order0 = 50
 
+
 def do_dct_transform(fbase):
 
     galaxy_id = fbase.split('/')[-1]
@@ -86,7 +87,7 @@ def do_dct_transform(fbase):
         smoother2d.galaxy_id = galaxy_id
         smoother2d.band = band
 
-        cPickle.dump(smoother2d, open(data_dir + 'react/' + galaxy_id + '_' + str(band) + '_dct.pickle', 'wb'))
+        cPickle.dump(smoother2d, open(data_dir + galaxy_id + '_' + str(band) + '_dct.pickle', 'wb'))
 
 
 def find_directory(galaxy_ids, train_ids, test_ids):
