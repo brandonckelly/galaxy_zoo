@@ -105,7 +105,6 @@ if __name__ == "__main__":
 
     galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
     galaxy_ids = list(galaxy_ids)
-    galaxy_ids = galaxy_ids[15000:30000]
 
     # find which ones we've already done
     already_done1 = glob.glob(data_dir + 'react/' + '*_0_dct.pickle')
