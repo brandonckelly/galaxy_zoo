@@ -31,7 +31,9 @@ class RobustPCA(PCA):
     def find_outliers(self, X):
         # first find do normal PCA to find the fraction of outliers
         # do outliers pursuit algorithm to find outliers
-        data_matrix, out_matrix = self._outlier_pursuit(X.T, self.noutliers / X.shape[0])
+        X_cent = X.copy()
+        X_cent -= np.median(X, axis=0)  # center the data
+        data_matrix, out_matrix = self._outlier_pursuit(X_cent.T, self.noutliers / X.shape[0])
         outliers = np.where(np.all(abs(out_matrix) > 0, axis=0))[0]
         return outliers
 
@@ -127,7 +129,7 @@ class RobustPCA(PCA):
 
 if __name__ == "__main__":
     # run an example
-    outfrac = 0.01
+    outfrac = 0.10
     ndata = 10000
 
     ndim = 500

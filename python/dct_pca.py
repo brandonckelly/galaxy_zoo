@@ -1,7 +1,6 @@
 __author__ = 'brandonkelly'
 
 import numpy as np
-from sklearn.decomposition import RandomizedPCA
 import cPickle
 import os
 import matplotlib.pyplot as plt
@@ -10,6 +9,7 @@ import glob
 from react import REACT2D
 import triangle
 from scipy.misc import bytescale
+from robust_pca import RobustPCA
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 dct_dir = base_dir + 'data/react/'
@@ -29,7 +29,9 @@ def build_dct_array(galaxy_ids):
         print i + 1
         dct_coefs = []
         for band in range(3):
-            dct = cPickle.load(open(dct_dir + gal_id + '_' + str(band) + '_dct.pickle', 'rb'))
+            image_file = open(dct_dir + gal_id + '_' + str(band) + '_dct.pickle', 'rb')
+            dct = cPickle.load(image_file)
+            image_file.close()
             if len(dct.coefs) < 2500:
                 nzeros = 2500 - len(dct.coefs)
                 dct.coefs = np.append(dct.coefs, np.zeros(nzeros))
@@ -74,9 +76,7 @@ def plot_pc_projections(X_pca, npca=5):
         labels.append('PC ' + str(i+1))
 
     fig = triangle.corner(X_pca[:, :npca], labels=labels)
-    fig.savefig(plot_dir + 'PC_Dist.png')
-    if doshow:
-        plt.show()
+    return fig
 
 
 if __name__ == "__main__":
@@ -99,14 +99,33 @@ if __name__ == "__main__":
     X = build_dct_array(galaxy_ids)
     if verbose:
         print 'Doing PCA...'
-    pca = RandomizedPCA(npca)
-    X_pca = pca.fit_transform(X)
+    rpca = RobustPCA(npca, verbose=True)
+    X_pca = rpca.fit_transform(X)
 
-    plt.plot(pca.explained_variance_ratio_.cumsum())
+    print 'Found', len(rpca.outliers), 'outliers:'
+    galaxy_ids = np.array(galaxy_ids)
+    rpca.galaxy_ids = galaxy_ids
+    print galaxy_ids[rpca.outliers]
+
+    cPickle.dump(rpca, open(base_dir + 'data/RPCA.pickle', 'wb'))
+
+    plt.plot(rpca.explained_variance_ratio_.cumsum())
     plt.ylabel('Cumulative Fractional Explained Variance')
     plt.xlabel('Number of Components')
     plt.savefig(plot_dir + 'explained_variance.png')
     if doshow:
         plt.show()
 
-    plot_pc_projections(X_pca)
+    # first plot before removing outliers
+    fig = plot_pc_projections(X_pca, npca=6)
+    fig.savefig(plot_dir + 'PC_dist.png')
+    if doshow:
+        plt.show()
+
+    # now plot after removing outliers
+    fig = plot_pc_projections(np.delete(X_pca, rpca.outliers, axis=0), npca=6)
+    fig.savefig(plot_dir + 'PC_dist_no_outliers.png')
+    if doshow:
+        plt.show()
+
+    make_pc_images(rpca, (100, 100))
