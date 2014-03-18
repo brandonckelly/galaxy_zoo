@@ -5,8 +5,97 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from scipy import linalg
 import triangle
-from pyrpca import op
 import time
+from memory_profiler import profile
+
+
+def outlier_pursuit(X, outfrac, verbose=False):
+    # algorithm hyper parameters
+    eta = 0.9
+    delta = 1e-5
+    lamb = 3.0 / (7.0 * np.sqrt(outfrac * X.shape[1]))
+    mu = 0.99 * linalg.norm(X, ord=2)
+    mubar = delta * mu
+    tol = 1e-6 * linalg.norm(X)
+
+    # initial values
+    niter = 0
+    data_mat = np.zeros(X.shape)
+    data_mat_old = np.zeros(X.shape)
+    outliers_mat = np.zeros(X.shape)
+    outliers_mat_old = np.zeros(X.shape)
+    t = 1.0
+    t_old = 1.0
+
+    X_cent = np.median(X, axis=0)  # get data centroids
+
+    # run the algorithm
+    t1 = time.clock()
+    converged = False
+    if verbose:
+        print 'Doing iteration ...'
+
+    while not converged:
+        if verbose:
+            print niter
+        Y_data = data_mat + (t_old - 1.0) / t * (data_mat - data_mat_old)
+        Y_out = outliers_mat + (t_old - 1.0) / t * (outliers_mat - outliers_mat_old)
+
+        # first update the uncontaminated data matrix
+        data_mat_old = data_mat
+        data_mat = 0.5 * Y_data - 0.5 * Y_out - (X - X_cent)  # temporary variable, save memory
+        U, S, V = linalg.svd(data_mat, full_matrices=False, overwrite_a=True)
+        S_shrunk = soft_threshold(S, mu / 2.0)  # shrink the singular values
+        data_mat = U.dot(np.dot(np.diag(S_shrunk), V))
+
+        # now update the outlier matrix
+        outliers_mat_old = outliers_mat
+        outliers_mat = 0.5 * Y_out - 0.5 * Y_data - (X - X_cent)  # temporary variable, save memory
+        outliers_mat = col_soft_threshold(outliers_mat, lamb * mu / 2.0)
+
+        # update the algorithm parameters
+        t_old = t
+        t = (1.0 + np.sqrt(4.0 * t_old ** 2 + 1.0)) / 2.0
+        mu = max(eta * mu, mubar)
+
+        niter += 1
+
+        # check for convergence
+        stop_data = 2 * (Y_data - data_mat) + (data_mat + outliers_mat - Y_data - Y_out)
+        stop_out = 2 * (Y_out - outliers_mat) + (data_mat + outliers_mat - Y_data - Y_out)
+
+        epsilon = linalg.norm(stop_data) ** 2 + linalg.norm(stop_out) ** 2
+        if epsilon < tol ** 2:
+            converged = True
+
+    t2 = time.clock()
+    if verbose:
+        print 'Outlier pursuit convergence reached in', niter, 'iterations.'
+        print 'Total time (sec):', t2 - t1
+
+    return data_mat, outliers_mat
+
+
+def soft_threshold(x, shrinkage):
+    x_shrunk = x - np.sign(x) * shrinkage
+    x_shrunk[np.abs(x) < shrinkage] = 0.0
+    return x_shrunk
+
+
+def col_soft_threshold(A, shrinkage):
+    colnorm = np.sqrt(np.sum(A ** 2, axis=0))
+    zero_idx = np.where(colnorm < shrinkage)[0]
+    A_shrunk = A * (1.0 - shrinkage / row_norm)
+    A_shrunk[:, zero_idx] = 0.0
+    return A_shrunk
+
+
+def row_soft_threshold(A, shrinkage):
+    row_norm = np.sqrt(np.sum(A ** 2, axis=1))
+    zero_idx = np.where(row_norm < shrinkage)[0]
+    A_shrunk = A * (1.0 - shrinkage / row_norm[:, np.newaxis])
+    A_shrunk[zero_idx, :] = 0.0
+    return A_shrunk
 
 
 class RobustPCA(PCA):
@@ -21,110 +110,23 @@ class RobustPCA(PCA):
         # first find outliers and remove them
         out_idx = self.find_outliers(X)
         self.outliers = out_idx
-        X_cleaned = np.delete(X, out_idx, axis=0)
+        if len(out_idx) == X.shape[0]:
+            # everything is an outlier, just do normal PCA
+            print 'Warning: Outlier pursuit estimates all data are outliers, just doing normal PCA.'
+            X_cleaned = X
+        else:
+            X_cleaned = np.delete(X, out_idx, axis=0)
         return super(RobustPCA, self)._fit(X_cleaned)
 
     def fit_transform(self, X, y=None):
-        U, S, V = self._fit(X)
+        self._fit(X)
         return self.transform(X)
 
     def find_outliers(self, X):
-        # first find do normal PCA to find the fraction of outliers
         # do outliers pursuit algorithm to find outliers
-        X_cent = X.copy()
-        X_cent -= np.median(X, axis=0)  # center the data
-        data_matrix, out_matrix = self._outlier_pursuit(X_cent.T, self.noutliers / X.shape[0])
+        data_matrix, out_matrix = outlier_pursuit(X.T, self.noutliers / X.shape[0], self.verbose)
         outliers = np.where(np.all(abs(out_matrix) > 0, axis=0))[0]
         return outliers
-
-    def _outlier_pursuit(self, X, outfrac):
-        # algorithm hyper parameters
-        eta = 0.9
-        delta = 1e-5
-        lamb = 3.0 / (7.0 * np.sqrt(outfrac * X.shape[1]))
-        mu = 0.99 * linalg.norm(X, ord=2)
-        mubar = delta * mu
-        tol = 1e-6 * linalg.norm(X)
-
-        # initial values
-        niter = 0
-        data_mat = np.zeros(X.shape)
-        data_mat_old = np.zeros(X.shape)
-        outliers_mat = np.zeros(X.shape)
-        outliers_mat_old = np.zeros(X.shape)
-        t = 1.0
-        t_old = 1.0
-
-        # run the algorithm
-        t1 = time.clock()
-        converged = False
-        if self.verbose:
-            print 'Doing iteration ...'
-
-        while not converged:
-            if self.verbose:
-                print niter
-            Y_data = data_mat + (t_old - 1.0) / t * (data_mat - data_mat_old)
-            Y_out = outliers_mat + (t_old - 1.0) / t * (outliers_mat - outliers_mat_old)
-
-            XY_diff = 0.5 * (Y_data + Y_out - X)
-
-            resid_data = Y_data - XY_diff
-            resid_out = Y_out - XY_diff
-
-            # first update the uncontaminated data matrix
-            U, S, V = linalg.svd(resid_data, full_matrices=False, overwrite_a=True)
-            S_shrunk = self._soft_threshold(S, mu / 2.0)  # shrink the singular values
-            data_mat_old = data_mat
-            data_mat = U.dot(np.dot(np.diag(S_shrunk), V))
-
-            # now update the outlier matrix
-            outliers_mat_old = outliers_mat
-            outliers_mat = self._col_soft_threshold(resid_out, lamb * mu / 2.0)
-
-            # update the algorithm parameters
-            t_old = t
-            t = (1.0 + np.sqrt(4.0 * t_old ** 2 + 1.0)) / 2.0
-            mu = max(eta * mu, mubar)
-
-            niter += 1
-
-            # check for convergence
-            stop_data = 2 * (Y_data - data_mat) + (data_mat + outliers_mat - Y_data - Y_out)
-            stop_out = 2 * (Y_out - outliers_mat) + (data_mat + outliers_mat - Y_data - Y_out)
-
-            epsilon = linalg.norm(stop_data) ** 2 + linalg.norm(stop_out) ** 2
-            if epsilon < tol ** 2:
-                converged = True
-
-        t2 = time.clock()
-        if self.verbose:
-            print 'Outlier pursuit convergence reached in', niter, 'iterations.'
-            print 'Total time (sec):', t2 - t1
-
-        return data_mat, outliers_mat
-
-    @staticmethod
-    def _soft_threshold(x, shrinkage):
-        x_shrunk = x - np.sign(x) * shrinkage
-        x_shrunk[np.abs(x) < shrinkage] = 0.0
-        return x_shrunk
-
-    @staticmethod
-    def _col_soft_threshold(A, shrinkage):
-        colnorm = np.sqrt(np.sum(A ** 2, axis=0))
-        zero_idx = np.where(colnorm < shrinkage)[0]
-        A_shrunk = A * (1.0 - shrinkage / row_norm)
-        A_shrunk[:, zero_idx] = 0.0
-        return A_shrunk
-
-    @staticmethod
-    def _row_soft_threshold(A, shrinkage):
-        row_norm = np.sqrt(np.sum(A ** 2, axis=1))
-        zero_idx = np.where(row_norm < shrinkage)[0]
-        A_shrunk = A * (1.0 - shrinkage / row_norm[:, np.newaxis])
-        A_shrunk[zero_idx, :] = 0.0
-        return A_shrunk
 
 
 if __name__ == "__main__":
@@ -170,29 +172,29 @@ if __name__ == "__main__":
     print "Initial guess at outlier fraction is", gamma
     plt.show()
 
-    do_op = False
-    if do_op:
-        L, C, term, niter = op.opursuit(X_cent.T, gamma=3.0 / 7.0)
-        np.save('rpca_ref', C)
-        out = []
-        for i in xrange(C.shape[1]):
-            is_out = np.any(C[:, i] != 0.0)
-            if is_out:
-                out.append(i)
-
-        print 'Found', len(out), 'outliers:'
-        print out
-        print 'True', len(c_idx), 'outliers:'
-        print np.sort(c_idx)
-
-        plt.plot(np.sqrt(np.sum(C ** 2, axis=0)), 'b.', label='C')
-        plt.plot(np.sqrt(np.sum(X_cent ** 2, axis=1)), 'r.', label='X')
-        plt.legend(loc='best')
-        plt.show()
-        exit()
+    # do_op = False
+    # if do_op:
+    #     L, C, term, niter = op.opursuit(X_cent.T, gamma=3.0 / 7.0)
+    #     np.save('rpca_ref', C)
+    #     out = []
+    #     for i in xrange(C.shape[1]):
+    #         is_out = np.any(C[:, i] != 0.0)
+    #         if is_out:
+    #             out.append(i)
+    #
+    #     print 'Found', len(out), 'outliers:'
+    #     print out
+    #     print 'True', len(c_idx), 'outliers:'
+    #     print np.sort(c_idx)
+    #
+    #     plt.plot(np.sqrt(np.sum(C ** 2, axis=0)), 'b.', label='C')
+    #     plt.plot(np.sqrt(np.sum(X_cent ** 2, axis=1)), 'r.', label='X')
+    #     plt.legend(loc='best')
+    #     plt.show()
+    #     exit()
 
     pca = PCA(n_components=5)
-    rpca = RobustPCA(verbose=True, n_components=5)
+    rpca = RobustPCA(verbose=True, n_components=5, noutliers=1)
     X_pca = pca.fit_transform(X)
     print 'Fitting Robust PCA...'
     X_rpca = rpca.fit_transform(X_cent)
