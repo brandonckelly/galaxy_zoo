@@ -99,7 +99,7 @@ if __name__ == "__main__":
     X = build_dct_array(galaxy_ids)
     if verbose:
         print 'Doing PCA...'
-    rpca = RobustPCA(npca, verbose=True)
+    rpca = RobustPCA(n_components=npca, verbose=True)
     X_pca = rpca.fit_transform(X)
 
     print 'Found', len(rpca.outliers), 'outliers:'
