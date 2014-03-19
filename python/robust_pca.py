@@ -181,7 +181,7 @@ if __name__ == "__main__":
     #         is_out = np.any(C[:, i] != 0.0)
     #         if is_out:
     #             out.append(i)
-    # 
+    #
     #     print 'Found', len(out), 'outliers:'
     #     print out
     #     print 'True', len(c_idx), 'outliers:'

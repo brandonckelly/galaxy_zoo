@@ -4,12 +4,10 @@ import numpy as np
 import cPickle
 import os
 import matplotlib.pyplot as plt
-import multiprocessing
 import glob
 from react import REACT2D
 import triangle
 from scipy.misc import bytescale
-from scipy import linalg
 from sklearn.decomposition import RandomizedPCA
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
