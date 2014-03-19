@@ -85,7 +85,7 @@ def soft_threshold(x, shrinkage):
 def col_soft_threshold(A, shrinkage):
     colnorm = np.sqrt(np.sum(A ** 2, axis=0))
     zero_idx = np.where(colnorm < shrinkage)[0]
-    A_shrunk = A * (1.0 - shrinkage / row_norm)
+    A_shrunk = A * (1.0 - shrinkage / colnorm)
     A_shrunk[:, zero_idx] = 0.0
     return A_shrunk
 
@@ -146,7 +146,7 @@ if __name__ == "__main__":
     ncontam = int(outfrac * ndata)
 
     outcov = cov.diagonal().copy()
-    outcov[0:9] *= 64.0
+    outcov[:30] *= 64.0
     outcov = np.diag(outcov)
 
     contaminants = np.random.multivariate_normal(means, outcov, ncontam)
@@ -174,14 +174,14 @@ if __name__ == "__main__":
 
     # do_op = False
     # if do_op:
-    #     L, C, term, niter = op.opursuit(X_cent.T, gamma=3.0 / 7.0)
+    #     L, C, term, niter = opursuit(X_cent.T, gamma=gamma)
     #     np.save('rpca_ref', C)
     #     out = []
     #     for i in xrange(C.shape[1]):
     #         is_out = np.any(C[:, i] != 0.0)
     #         if is_out:
     #             out.append(i)
-    #
+    # 
     #     print 'Found', len(out), 'outliers:'
     #     print out
     #     print 'True', len(c_idx), 'outliers:'
@@ -191,13 +191,13 @@ if __name__ == "__main__":
     #     plt.plot(np.sqrt(np.sum(X_cent ** 2, axis=1)), 'r.', label='X')
     #     plt.legend(loc='best')
     #     plt.show()
-    #     exit()
+    #     # exit()
 
     pca = PCA(n_components=5)
-    rpca = RobustPCA(verbose=True, n_components=5, noutliers=1)
+    rpca = RobustPCA(verbose=True, n_components=5, noutliers=18.0)
     X_pca = pca.fit_transform(X)
     print 'Fitting Robust PCA...'
-    X_rpca = rpca.fit_transform(X_cent)
+    X_rpca = rpca.fit_transform(X)
 
     print 'True', len(c_idx), 'indices of contaminants:'
     print np.sort(c_idx)
