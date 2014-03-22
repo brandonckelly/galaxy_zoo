@@ -8,7 +8,7 @@ import glob
 from react import REACT2D
 import triangle
 from scipy.misc import bytescale
-from probabilistic_lda import ProbabilisticLDA
+from sklearn.lda import LDA
 import pandas as pd
 from multiclass_triangle_plot import multiclass_triangle
 
@@ -22,9 +22,8 @@ do_parallel = False
 
 ncoefs = 1000
 
-def plot_lda_projections(X_lda, probs):
 
-    classes = probs.argmax(axis=1)
+def plot_lda_projections(X_lda, classes):
 
     n_components = X_lda.shape[1]
     labels = []
@@ -66,7 +65,7 @@ def make_lda_images(lda, shape, question, dct_idx=None):
 def lda_transform(X, y, question):
 
     print 'Doing LDA for question', question, '...'
-    lda = ProbabilisticLDA()
+    lda = LDA()
     lda.question = question
     X_lda = lda.fit_transform(X, y)
 
@@ -155,10 +154,15 @@ if __name__ == "__main__":
         probs /= norm[:, np.newaxis]
         assert np.all(np.isfinite(X[norm > 0]))
         assert np.all(np.isfinite(probs[norm > 0]))
-         # don't include gals that never made it to this node
-        X_lda_q, lda = lda_transform(X[norm > 0], probs[norm > 0], question)
+        # randomly sample the classes
+        in_node = np.where(norm > 0)[0]
+        class_labels = np.zeros(len(in_node), dtype=int)
+        for i in xrange(len(in_node)):
+            class_labels[i] = np.random.multinomial(1, probs[in_node[i]]).argmax()
+        # don't include gals that never made it to this node
+        X_lda_q, lda = lda_transform(X[in_node], class_labels, question)
         # make plots
-        fig = plot_lda_projections(X_lda_q, probs[norm > 0])
+        fig = plot_lda_projections(X_lda_q, class_labels)
         fig.savefig(plot_dir + 'LDA_dist_no_outliers_' + str(question) + '.png')
         if doshow:
             plt.show()
