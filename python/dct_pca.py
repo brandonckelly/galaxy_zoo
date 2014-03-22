@@ -15,10 +15,10 @@ dct_dir = base_dir + 'data/react/'
 plot_dir = base_dir + 'plots/'
 
 npca = 500
-doshow = False
+doshow = True
 verbose = True
 do_parallel = False
-load_X = False
+load_X = True
 load_pca = False
 ncoefs = 2500
 
@@ -105,7 +105,7 @@ if __name__ == "__main__":
     if load_X:
         if verbose:
             print 'Loading the data...'
-        X = np.load(base_dir + 'data/DCT_array_all.npy')
+        X = np.load(base_dir + 'data/DCT_array_all.npy').astype(np.float32)
     else:
         X = build_dct_array(galaxy_ids, ncoefs)
         np.save(base_dir + 'data/DCT_array_all', X)
@@ -133,10 +133,11 @@ if __name__ == "__main__":
         # do the PCA
         if verbose:
             print 'Doing PCA...'
-        rpca = RandomizedPCA(n_components=npca)
+        rpca = RandomizedPCA(n_components=npca, copy=False)
         X = rpca.fit_transform(X)
         rpca.galaxy_ids = galaxy_ids[notout]
         cPickle.dump(rpca, open(base_dir + 'data/DCT_PCA.pickle', 'wb'))
+        np.save(base_dir + 'data/PCA_dist_no_outliers', X)
 
     plt.plot(rpca.explained_variance_ratio_.cumsum())
     plt.ylabel('Cumulative Fractional Explained Variance')

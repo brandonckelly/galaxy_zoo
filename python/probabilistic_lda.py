@@ -3,6 +3,7 @@ __author__ = 'brandonkelly'
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy import linalg
+from multiclass_triangle_plot import multiclass_triangle
 
 
 class ProbabilisticLDA(object):
@@ -59,13 +60,14 @@ class ProbabilisticLDA(object):
         if self.n_components is None:
             self.n_components = nclasses - 1
         self.components_ = inv_cov_sqrt.dot(bevects[:, :self.n_components])
+        self.components_ = self.components_.T
 
     def fit_transform(self, X, y):
         self.fit(X, y)
         return self.transform(X)
 
     def transform(self, X):
-        return X.dot(self.components_)
+        return X.dot(self.components_.T)
 
 
 if __name__ == "__main__":
@@ -84,7 +86,7 @@ if __name__ == "__main__":
 
     # cov = np.identity(ndim)
 
-    means = np.random.multivariate_normal(np.zeros(ndim), cov / 10.0, nclasses)
+    means = 10.0 + np.random.multivariate_normal(np.zeros(ndim), cov / 10.0, nclasses)
     nx = np.random.multinomial(ndata, priors)
     nx_test = np.random.multinomial(ndata, priors)
 
@@ -109,7 +111,7 @@ if __name__ == "__main__":
         plt.plot(X_k[:, 0], X_k[:, 1], '.', label='Class ' + str(k+1))
     plt.legend(loc='best')
     plt.show()
-    plt.clf()
+    plt.close()
 
     # compute probabilities when we don't know the labels
     yprob = np.zeros_like(y)
@@ -129,24 +131,31 @@ if __name__ == "__main__":
     X_lda = plda.transform(X_test)
     n_components = X_lda.shape[1]
 
-    for i in range(n_components):
-        for j in range(i, n_components):
-            if i == j:
-                for k in range(nclasses):
-                    class_idx = (y_test[:, k] > 0.99)
-                    if sum(class_idx) < 100:
-                        nbins = 10
-                    else:
-                        nbins = 25
-                    plt.hist(X_lda[class_idx, i], bins=nbins, alpha=0.5)
-                plt.xlabel('LDA ' + str(i+1))
-                plt.show()
-                plt.clf()
-            else:
-                for k in range(nclasses):
-                    class_idx = (y_test[:, k] > 0.99)
-                    plt.plot(X_lda[class_idx, i], X_lda[class_idx, j], '.')
-                plt.xlabel('LDA ' + str(i+1))
-                plt.ylabel('LDA ' + str(j+1))
-                plt.show()
-                plt.clf()
+    labels = []
+    for i in range(X_lda.shape[1]):
+        labels.append('LDA ' + str(i+1))
+
+    fig = multiclass_triangle(X_lda, y_test.argmax(axis=1), labels=labels)
+    plt.show()
+
+    # for i in range(n_components):
+    #     for j in range(i, n_components):
+    #         if i == j:
+    #             for k in range(nclasses):
+    #                 class_idx = (y_test[:, k] > 0.99)
+    #                 if sum(class_idx) < 100:
+    #                     nbins = 10
+    #                 else:
+    #                     nbins = 25
+    #                 plt.hist(X_lda[class_idx, i], bins=nbins, alpha=0.5)
+    #             plt.xlabel('LDA ' + str(i+1))
+    #             plt.show()
+    #             plt.clf()
+    #         else:
+    #             for k in range(nclasses):
+    #                 class_idx = (y_test[:, k] > 0.99)
+    #                 plt.plot(X_lda[class_idx, i], X_lda[class_idx, j], '.')
+    #             plt.xlabel('LDA ' + str(i+1))
+    #             plt.ylabel('LDA ' + str(j+1))
+    #             plt.show()
+    #             plt.clf()
