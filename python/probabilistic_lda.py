@@ -4,7 +4,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import linalg
 from multiclass_triangle_plot import multiclass_triangle
-
+from sklearn.lda import LDA
+from linear_discriminant_analysis import LDA as LDA2
 
 class ProbabilisticLDA(object):
 
@@ -127,15 +128,36 @@ if __name__ == "__main__":
     assert max_eps < 1e-6
 
     plda = ProbabilisticLDA()
+    lda = LDA()
     plda.fit(X, yprob)
-    X_lda = plda.transform(X_test)
-    n_components = X_lda.shape[1]
+    X_plda = plda.transform(X)
+    lda.fit(X, y.argmax(axis=1))
+    X_lda = lda.transform(X)
+
+    lda2 = LDA2()
+    lda2.set_training_sample(X, y.argmax(axis=1))
+    lda2.train()
+    X_lda2 = X.dot(lda2.discriminant_vector)
+    # label = Y_raw.argmin(axis=1)
+
+    n_components = X_plda.shape[1]
+
+    labels = []
+    for i in range(X_plda.shape[1]):
+        labels.append('PLDA ' + str(i+1))
+
+    fig = multiclass_triangle(X_plda, y.argmax(axis=1), labels=labels)
 
     labels = []
     for i in range(X_lda.shape[1]):
         labels.append('LDA ' + str(i+1))
+    fig = multiclass_triangle(X_lda, y.argmax(axis=1), labels=labels)
 
-    fig = multiclass_triangle(X_lda, y_test.argmax(axis=1), labels=labels)
+    labels = []
+    for i in range(X_lda2.shape[1]):
+        labels.append('LDA2 ' + str(i+1))
+    fig = multiclass_triangle(X_lda2, y.argmax(axis=1), labels=labels)
+
     plt.show()
 
     # for i in range(n_components):

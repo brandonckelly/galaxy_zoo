@@ -6,49 +6,75 @@ import os
 import matplotlib.pyplot as plt
 import glob
 from react import REACT2D
-import triangle
 from scipy.misc import bytescale
-from sklearn.lda import LDA
+from probabilistic_lda import ProbabilisticLDA
 import pandas as pd
 from multiclass_triangle_plot import multiclass_triangle
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 dct_dir = base_dir + 'data/react/'
 plot_dir = base_dir + 'plots/'
+training_dir = base_dir + 'data/images_training_rev1/'
 
 doshow = False
 verbose = True
 do_parallel = False
 
-ncoefs = 1000
+ncoefs = 2000
+
+
+def image_sanity_check(galaxy_id, dct):
+    print 'Doing sanity check for', galaxy_id
+    image = np.load(training_dir + str(galaxy_id) + '_' + str(1) + '.npy')
+    U = REACT2D.build_dct(image.shape[0], image.shape[1], 50)
+    print U[:, :ncoefs].shape, dct[2500:2500+ncoefs].shape, dct.shape
+    dct_image = U[:, :ncoefs].dot(dct[ncoefs:2*ncoefs]).reshape(image.shape)
+
+    plt.subplot(121)
+    plt.imshow(image, cmap='hot')
+    plt.title('True, ' + str(galaxy_id))
+    plt.subplot(122)
+    plt.imshow(dct_image, cmap='hot')
+    plt.title('DCT, ' + str(galaxy_id))
+    plt.show()
 
 
 def plot_lda_projections(X_lda, classes):
 
     n_components = X_lda.shape[1]
-    labels = []
-    for i in range(n_components):
-        labels.append('LDA ' + str(i+1))
 
-    fig = multiclass_triangle(X_lda, classes, labels=labels, verbose=verbose)
+    if n_components == 1:
+        color_list = ["DodgerBlue", "DarkOrange"]
+        class_labels = np.unique(classes)
+        fig = plt.figure()
+        for c in class_labels:
+            plt.hist(np.squeeze(X_lda[classes == c]), bins=50, lw=2, alpha=0.5, color=color_list[c])
+    else:
+        labels = []
+        for i in range(n_components):
+            labels.append('LDA ' + str(i+1))
+
+        fig = multiclass_triangle(X_lda, classes, labels=labels, verbose=verbose)
     return fig
 
 
-def make_lda_images(lda, shape, question, dct_idx=None):
+def make_lda_images(lda, shape, question):
 
-    n_components = lda.components_.shape[0]
+    lda_coefs = lda.components_  # n_components x n_features
+
+    n_components = lda_coefs.shape[0]
     U = REACT2D.build_dct(shape[0], shape[1], 50)
 
     lda_images = np.empty((n_components, shape[0], shape[1], 3))
 
     # lda.components_.shape = (ncomponents, nfeatures)
-    print 'LDA components shape:', lda.components_.shape
+    print lda_coefs.shape, U.shape
     lda_images[:, :, :, 0] = \
-        lda.components_[:, :ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
+        lda_coefs[:, :ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
     lda_images[:, :, :, 1] = \
-        lda.components_[:, ncoefs:2*ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
+        lda_coefs[:, ncoefs:2*ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
     lda_images[:, :, :, 2] = \
-        lda.components_[:, 2*ncoefs:].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
+        lda_coefs[:, 2*ncoefs:].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
 
     for i in range(n_components):
         plt.clf()
@@ -65,7 +91,7 @@ def make_lda_images(lda, shape, question, dct_idx=None):
 def lda_transform(X, y, question):
 
     print 'Doing LDA for question', question, '...'
-    lda = LDA()
+    lda = ProbabilisticLDA()
     lda.question = question
     X_lda = lda.fit_transform(X, y)
 
@@ -125,19 +151,26 @@ if __name__ == "__main__":
         print 'Loading the data...'
     X = np.load(base_dir + 'data/DCT_array_all.npy')[train_set, :].astype(np.float32)
 
-    zero_idx = np.where(np.all(X == 0, axis=0))[0]  # remove columns with all zeros
-    if len(zero_idx) > 0:
-        if verbose:
-            print 'Detected the following columns as having all zeros and removed them:'
-            print zero_idx
-        dct_idx = np.where(np.all(X[:, :2500] != 0, axis=0))[0]
-        X = np.delete(X, zero_idx, axis=1)
-    else:
-        dct_idx = None
+    dct_idx = np.asarray([np.arange(ncoefs), 2500 + np.arange(ncoefs), 5000 + np.arange(ncoefs)]).ravel()
+    X = X[:, dct_idx]
+
+    # zero_idx = np.where(np.all(X == 0, axis=0))[0]  # remove columns with all zeros
+    # if len(zero_idx) > 0:
+    #     if verbose:
+    #         print 'Detected the following columns as having all zeros and removed them:'
+    #         print zero_idx
+    #     dct_idx = np.where(np.all(X[:, :2500] != 0, axis=0))[0]
+    #     X = np.delete(X, zero_idx, axis=1)
+    # else:
+    #     dct_idx = None
 
     # remove outliers
     X, good_idx = remove_outliers(X, thresh=6.0)
     y = y.ix[y.index[good_idx]]
+
+    # sanity check
+    idx = np.random.permutation(len(y))[0]
+    image_sanity_check(y.index[idx], X[idx])
 
     questions = range(1, 12)
 
@@ -154,19 +187,19 @@ if __name__ == "__main__":
         probs /= norm[:, np.newaxis]
         assert np.all(np.isfinite(X[norm > 0]))
         assert np.all(np.isfinite(probs[norm > 0]))
-        # randomly sample the classes
+        # randomly sample the classes for plotting
         in_node = np.where(norm > 0)[0]
         class_labels = np.zeros(len(in_node), dtype=int)
         for i in xrange(len(in_node)):
             class_labels[i] = np.random.multinomial(1, probs[in_node[i]]).argmax()
         # don't include gals that never made it to this node
-        X_lda_q, lda = lda_transform(X[in_node], class_labels, question)
+        X_lda_q, lda = lda_transform(X[in_node], probs[in_node], question)
         # make plots
         fig = plot_lda_projections(X_lda_q, class_labels)
         fig.savefig(plot_dir + 'LDA_dist_no_outliers_' + str(question) + '.png')
         if doshow:
             plt.show()
-        make_lda_images(lda, (100, 100), question, dct_idx=dct_idx)
+        make_lda_images(lda, (100, 100), question)
 
         if question == 1:
             X_lda = X_lda_q
@@ -175,4 +208,5 @@ if __name__ == "__main__":
             X_lda = np.hstack((X_lda, X_lda_q))
 
     print 'Saving the transformed values...'
-    np.save(base_dir + 'data/LDA_training_transform', X_lda)
+    cols = ['LDA ' + str(c+1) for c in range(X_lda.shape[1])]
+    df = pd.DataFrame(data=X_lda, index=y.index, columns=cols).to_hdf(base_dir + 'data/LDA_training_transform.h5', 'df')
