@@ -20,6 +20,7 @@ doshow = False
 verbose = True
 do_parallel = False
 
+ncoefs = 1000
 
 def plot_lda_projections(X_lda, probs):
 
@@ -39,21 +40,16 @@ def make_lda_images(lda, shape, question, dct_idx=None):
     n_components = lda.components_.shape[0]
     U = REACT2D.build_dct(shape[0], shape[1], 50)
 
-    if dct_idx is not None:
-        dct_idx = np.arange(2500)
-    dct_idx = np.arange(2499)
-    U = U[:, dct_idx]
-
     lda_images = np.empty((n_components, shape[0], shape[1], 3))
 
     # lda.components_.shape = (ncomponents, nfeatures)
     print 'LDA components shape:', lda.components_.shape
     lda_images[:, :, :, 0] = \
-        lda.components_[:, dct_idx].dot(U.T).reshape((n_components, shape[0], shape[1]))
+        lda.components_[:, :ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
     lda_images[:, :, :, 1] = \
-        lda.components_[:, dct_idx + len(dct_idx)].dot(U.T).reshape((n_components, shape[0], shape[1]))
+        lda.components_[:, ncoefs:2*ncoefs].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
     lda_images[:, :, :, 2] = \
-        lda.components_[:, dct_idx + 2*len(dct_idx)].dot(U.T).reshape((n_components, shape[0], shape[1]))
+        lda.components_[:, 2*ncoefs:].dot(U.T[:ncoefs, :]).reshape((n_components, shape[0], shape[1]))
 
     for i in range(n_components):
         plt.clf()
