@@ -58,7 +58,7 @@ def make_lda_images(lda, shape, question, dct_idx=None):
     for i in range(n_components):
         plt.clf()
         plt.imshow(bytescale(lda_images[i, :, :, :]))
-        question_idx = str(int(question)) + '.' + str(i+1)
+        question_idx = str(int(question)) + '-' + str(i+1)
         plt.title('LDA ' + question_idx)
         plt.tick_params(axis='x', which='both', bottom='off', top='off', labelbottom='off')
         plt.tick_params(axis='y', which='both', bottom='off', top='off', labelbottom='off')
