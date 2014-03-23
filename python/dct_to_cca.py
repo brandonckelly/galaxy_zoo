@@ -12,7 +12,7 @@ import triangle
 from scipy.misc import bytescale
 from sklearn.cross_decomposition import CCA
 import pandas as pd
-from dct_to_lda import remove_outliers
+from dct_to_lda import remove_outliers, image_sanity_check
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 dct_dir = base_dir + 'data/react/'
@@ -38,9 +38,8 @@ def make_cca_images(cca, shape, dct_idx=None):
     n_components = cca.x_weights_.shape[1]
     U = REACT2D.build_dct(shape[0], shape[1], 50)
 
-    if dct_idx is not None:
-        U = U[:, dct_idx]
     dct_idx = np.arange(2499)
+    U = U[:, dct_idx]
 
     cca_images = np.empty((n_components, shape[0], shape[1], 3))
 
@@ -126,13 +125,19 @@ if __name__ == "__main__":
     X, good_idx = remove_outliers(X, 6.0)
     y = y.ix[y.index[good_idx]]
 
+    # sanity check
+    idx = np.random.permutation(len(y))[0]
+    image_sanity_check(y.index[idx], X[idx])
+
     # only keep unique values
-
-
+    unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
+                   'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
+                   'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
+                   'Class11.3', 'Class11.4', 'Class11.5']
 
     # do CCA
     cca = CCA(n_components=len(y.columns), copy=False)
-    X_cca, y_cca = cca.fit_transform(X, y)
+    X_cca, y_cca = cca.fit_transform(X, y[unique_cols])
 
     # make plots
     make_cca_images(cca, (100, 100), dct_idx=dct_idx)
