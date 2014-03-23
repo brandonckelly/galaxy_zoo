@@ -21,6 +21,7 @@ plot_dir = base_dir + 'plots/'
 doshow = False
 verbose = True
 do_parallel = False
+ncoefs = 2000
 
 
 def plot_cca_projections(X_cca, n_components=7):
@@ -110,16 +111,8 @@ if __name__ == "__main__":
     if verbose:
         print 'Loading the data...'
     X = np.load(base_dir + 'data/DCT_array_all.npy')[train_set, :].astype(np.float32)
-
-    zero_idx = np.where(np.all(X == 0, axis=1))[0]  # remove columns with all zeros
-    if len(zero_idx) > 0:
-        if verbose:
-            print 'Detected the following columns as having all zeros and removed them:'
-            print zero_idx
-        X = np.delete(X, zero_idx, axis=1)
-        dct_idx = np.where(np.all(X[:, :2500] != 0, axis=1))[0]
-    else:
-        dct_idx = None
+    dct_idx = np.asarray([np.arange(ncoefs), 2500 + np.arange(ncoefs), 5000 + np.arange(ncoefs)]).ravel()
+    X = X[:, dct_idx]
 
     # remove outliers
     X, good_idx = remove_outliers(X, 6.0)
@@ -127,6 +120,7 @@ if __name__ == "__main__":
 
     # sanity check
     idx = np.random.permutation(len(y))[0]
+    idx = np.where(y.index == 119384)[0][0]
     image_sanity_check(y.index[idx], X[idx])
 
     # only keep unique values
@@ -136,8 +130,12 @@ if __name__ == "__main__":
                    'Class11.3', 'Class11.4', 'Class11.5']
 
     # do CCA
-    cca = CCA(n_components=len(y.columns), copy=False)
+    if verbose:
+        print 'Doing CCA...'
+    cca = CCA(n_components=len(unique_cols), copy=False)
     X_cca, y_cca = cca.fit_transform(X, y[unique_cols])
+
+    cPickle.dump(cca, open(base_dir + 'data/CCA_DCT.pickle', 'wb'))
 
     # make plots
     make_cca_images(cca, (100, 100), dct_idx=dct_idx)
@@ -147,4 +145,4 @@ if __name__ == "__main__":
         plt.show()
 
     print 'Saving the transformed values...'
-    np.save(base_dir + 'data/LDA_training_transform', X_cca)
+    np.save(base_dir + 'data/CCA_training_transform', X_cca)
