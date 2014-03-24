@@ -21,12 +21,19 @@ njobs = 1
 
 def train_rf(df, y):
 
+    # Random Forest predictions Correspond to these values. Need to calculate the values for the remaining
+    # classes using the summation constraints.
+    unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
+                   'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
+                   'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
+                   'Class11.3', 'Class11.4', 'Class11.5']
+
     # first find optimal number of trees
     ntrees = [10, 20, 40, 80, 160, 320]
     oob_rmse = np.zeros(len(ntrees))
     for i, nt in enumerate(ntrees):
         rf = RandomForestRegressor(max_features='sqrt', oob_score=True, n_estimators=nt, verbose=verbose, n_jobs=njobs)
-        rf.fit(df.values, y)
+        rf.fit(df.values, y.values)
         yhat_oob = rf.oob_prediction_
         oob_rmse[i] = np.sqrt(np.mean((yhat_oob - y) ** 2))
 
