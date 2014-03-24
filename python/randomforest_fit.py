@@ -97,6 +97,14 @@ def train_rf(df, y):
     if doshow:
         plt.show()
 
+    # plot histogram of the errors
+    rmse_by_galaxy = np.sqrt(np.mean((yhat_oob - y) ** 2, axis=1))
+    plt.hist(rmse_by_galaxy, bins=200, histtype='stepfillled')
+    plt.xlabel('RMSE')
+    plt.savefig(plot_dir + 'OOB_RMSE_RF_histogram.png')
+    if doshow:
+        plt.show()
+
 
 if __name__ == "__main__":
 
