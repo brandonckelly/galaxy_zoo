@@ -18,7 +18,7 @@ verbose = True
 njobs = 1
 
 
-def get_rmse(y, yfit):
+def get_err(y, yfit):
     # calculate remaining classes using constraints
     yfit['Class1.3'] = 1.0 - yfit['Class1.1'] - yfit['Class1.2']
     yfit['Class2.2'] = yfit['Class1.2'] - yfit['Class2.1']
@@ -37,9 +37,7 @@ def get_rmse(y, yfit):
                              yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
 
     err = y - yfit
-    rmse = np.sqrt(np.mean(err.values ** 2))
-    assert np.isfinite(rmse)
-    return rmse
+    return err
 
 
 def train_rf(df, y, ntrees=None, msplit=None):
@@ -62,7 +60,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                        n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
-            oob_rmse[i] = get_rmse(y, yhat_oob)
+            oob_rmse[i] = np.sqrt(np.mean(get_err(y, yhat_oob).values ** 2))
 
         if verbose:
             print '# of trees | OOB RMSE'
@@ -89,16 +87,20 @@ def train_rf(df, y, ntrees=None, msplit=None):
         oob_rmse = np.zeros(len(msplit))
         best_rf = None
         best_rmse = 1e300
+        best_err = None
         for i, m in enumerate(msplit):
             rf = RandomForestRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                        n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
-            oob_rmse[i] = get_rmse(y, yhat_oob)
+            oob_err = get_err(y, yhat_oob)
+            oob_rmse[i] = np.sqrt(np.mean(oob_err.values ** 2))
+
             if oob_rmse[i] < best_rmse:
                 # save best RF so we don't need to recompute it later
                 best_rf = rf
                 best_rmse = oob_rmse[i]
+                best_err = oob_err.values
 
         if verbose:
             print 'm features | OOB RMSE'
@@ -137,10 +139,20 @@ def train_rf(df, y, ntrees=None, msplit=None):
         plt.show()
 
     # plot histogram of the errors
-    rmse_by_galaxy = np.sqrt(np.mean((yhat_oob - y) ** 2, axis=1))
+    rmse_by_galaxy = np.sqrt(np.mean(best_err ** 2, axis=1))
     plt.hist(rmse_by_galaxy, bins=200, histtype='stepfillled')
-    plt.xlabel('RMSE')
+    plt.xlabel('OOB RMSE')
     plt.savefig(plot_dir + 'OOB_RMSE_RF_histogram.png')
+    if doshow:
+        plt.show()
+
+    # plot errors vs. PCA norm
+    pc_cols = [c for c in df.columns if 'PC' in c]
+    pca_norm = np.norm(df[pc_cols], axis=1)
+    plt.loglog(pca_norm, rmse_by_galaxy, '.')
+    plt.xlabel('PC Norm')
+    plt.ylabel('OOB RMSE')
+    plt.savefig(plot_dir + 'OOB_RMSE_vs_PC_Norm_RF.png')
     if doshow:
         plt.show()
 
