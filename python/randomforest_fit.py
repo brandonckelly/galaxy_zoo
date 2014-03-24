@@ -19,14 +19,14 @@ verbose = True
 njobs = 1
 
 
-def train_rf(X, y, labels):
+def train_rf(df, y):
 
     # first find optimal number of trees
     ntrees = [10, 20, 40, 80, 160, 320]
     oob_rmse = np.zeros(len(ntrees))
     for i, nt in enumerate(ntrees):
         rf = RandomForestRegressor(max_features='sqrt', oob_score=True, n_estimators=nt, verbose=verbose, n_jobs=njobs)
-        rf.fit(X, y)
+        rf.fit(df.values, y)
         yhat_oob = rf.oob_prediction_
         oob_rmse[i] = np.sqrt(np.mean((yhat_oob - y) ** 2))
 
@@ -56,7 +56,7 @@ def train_rf(X, y, labels):
     best_rmse = 1e300
     for i, m in enumerate(nfeatures):
         rf = RandomForestRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose, n_jobs=njobs)
-        rf.fit(X, y)
+        rf.fit(df.values, y)
         yhat_oob = rf.oob_prediction_
         oob_rmse[i] = np.sqrt(np.mean((yhat_oob - y) ** 2))
         if oob_rmse[i] < best_rmse:
@@ -87,7 +87,7 @@ def train_rf(X, y, labels):
     fimp = best_rf.feature_importances_
     fimp /= fimp.max()
     sidx = np.argsort(fimp)
-    feature_labels = np.array(labels)
+    feature_labels = np.array(df.columns)
     pos = np.arange(50) + 0.5
     plt.clf()
     plt.barh(pos, fimp[sidx[-50:]], align='center')
@@ -107,10 +107,8 @@ if __name__ == "__main__":
 
     print 'Found', len(y), 'galaxies with training labels.'
 
-    X, feature_labels = make_feature_array(y.index)
+    # load the training data for the features
+    df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+    df = df.ix[y.index]
 
-    # sanity check
-    idx = np.random.permutation(len(y))[0]
-    image_sanity_check(y.index[idx], X[idx])
-
-    train_rf(X, y, feature_labels)
+    train_rf(df, y)
