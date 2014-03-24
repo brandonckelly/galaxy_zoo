@@ -36,7 +36,8 @@ def get_rmse(y, yfit):
     yfit['Class11.6'] = yfit['Class4.1'] - yfit['Class11.1'] - yfit['Class11.2'] - \
                              yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
 
-    rmse = np.sqrt((y - yfit) ** 2)
+    err = y - yfit
+    rmse = np.sqrt(np.mean(err.values ** 2))
     assert np.isfinite(rmse)
     return rmse
 
