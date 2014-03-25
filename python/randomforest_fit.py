@@ -101,6 +101,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                 best_rf = rf
                 best_rmse = oob_rmse[i]
                 best_err = oob_err.values
+                msplit = m
 
         if verbose:
             print 'm features | OOB RMSE'
@@ -121,8 +122,11 @@ def train_rf(df, y, ntrees=None, msplit=None):
         best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                         n_jobs=njobs)
         best_rf.fit(df.values, y_unique)
+        yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
+        best_err = get_err(y, yhat_oob)
 
-    cPickle.dump(best_rf, open(data_dir + 'RF_regressor.pickle', 'wb'))
+    cPickle.dump(best_rf, open(data_dir + 'RF_regressor_ntrees' + str(ntrees) + '_msplit' + str(msplit) +
+                               '.pickle', 'wb'))
 
     # make feature importance plot
     fimp = best_rf.feature_importances_
