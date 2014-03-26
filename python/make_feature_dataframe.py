@@ -8,6 +8,7 @@ import glob
 from PIL import Image
 import multiprocessing
 from scipy import linalg
+import datetime
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 plot_dir = base_dir + 'plots/'
@@ -15,7 +16,7 @@ dct_dir = base_dir + 'data/react/'
 training_dir = base_dir + 'data/images_training_rev1/'
 
 doshow = False
-verbose = True
+verbose = False
 do_parallel = True
 npcs = 200
 
@@ -25,6 +26,8 @@ def logit(x):
 
 
 def get_central_pixel_colors(galaxy_id):
+    if verbose:
+        print galaxy_id
     # find which directory galaxy is in
     train_file = base_dir + 'data/images_training_rev1/' + str(galaxy_id) + '.jpg'
     test_file = base_dir + 'data/images_test_rev1/' + str(galaxy_id) + '.jpg'
@@ -44,9 +47,13 @@ def get_central_pixel_colors(galaxy_id):
 
 
 def make_gaussfit_features(galaxy_id):
-    gfit = pd.read_csv(base_dir + 'data/gauss_fit/' + str(galaxy_id) + '_gauss_params.csv').set_index('GaussianID')
+    if verbose:
+        print galaxy_id
+    gfit = pd.read_csv(base_dir + 'data/gauss_fit/transfer/' + str(galaxy_id) + '_gauss_params.csv').set_index('GaussianID')
 
     # first get features for gaussian corresponding to galaxy
+    if 'Band' in gfit.columns:
+        gfit = gfit[gfit['Band'] == 2]
     gal = gfit.ix[0]
     gal_major = np.log(gal['amajor'])
     gal_aratio = logit(gal['aminor'] / gfit.ix[0]['amajor'])
@@ -62,8 +69,8 @@ def make_gaussfit_features(galaxy_id):
     gal_covar[1, 1] = gal['ysigma'] ** 2
     gal_covar[0, 1] = gal['rho'] * np.sqrt(gal_covar[0, 0] * gal_covar[1, 1])
     gal_covar[1, 0] = gal_covar[0, 1]
-    mah_distance = np.zeros(4)
-    for i in range(1, 5):
+    mah_distance = 1000.0 * np.ones(4)
+    for i in range(1, len(gfit)):
         # first get mahalonobis distance and sort by this
         this_centroid = np.array([gfit.ix[i]['xcent'], gfit.ix[i]['ycent']])
         centdiff = this_centroid - gal_centroid
@@ -71,17 +78,23 @@ def make_gaussfit_features(galaxy_id):
         covar[0, 0] = gfit.ix[i]['xsigma'] ** 2
         covar[1, 1] = gfit.ix[i]['ysigma'] ** 2
         covar[0, 1] = gfit.ix[i]['rho'] * np.sqrt(covar[0, 0] * covar[1, 1])
-        covar[1, 0] = gal_covar[0, 1]
-        mah_distance[i] = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(covar + gal_covar), centdiff)))
+        covar[1, 0] = covar[0, 1]
+        mah_distance[i-1] = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(covar + gal_covar), centdiff)))
 
     assert np.all(np.isfinite(mah_distance))
 
     s_idx = mah_distance.argsort()
     for idx in s_idx:
-        this_major = np.log(gfit.ix[idx]['amajor'])
-        this_aratio = logit(gfit.ix[idx]['aminor'] / gfit.ix[idx]['amajor'])
-        this_flux = np.log(2.0 * np.pi * gfit.ix[idx]['amplitude'] * gfit.ix[idx]['amajor'] * gfit.ix[idx]['aminor'])
-        these_features = np.asarray([np.log(mah_distance), this_major, this_aratio, this_flux])
+        if idx in gfit.index:
+            this_major = np.log(gfit.ix[idx]['amajor'])
+            this_aratio = logit(gfit.ix[idx]['aminor'] / gfit.ix[idx]['amajor'])
+            this_flux = np.log(2.0 * np.pi * gfit.ix[idx]['amplitude'] *
+                               gfit.ix[idx]['amajor'] * gfit.ix[idx]['aminor'])
+        else:
+            this_major = -9999.0
+            this_aratio = -9999.0
+            this_flux = -9999.0
+        these_features = np.asarray([np.log(mah_distance[idx]), this_major, this_aratio, this_flux])
         features = np.append(features, these_features)
 
     return features
@@ -100,54 +113,90 @@ if __name__ == "__main__":
     galaxy_ids_2 = set([f.split('/')[-1].split('_')[0] for f in files_2])
 
     galaxy_ids = list(galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2)
+    del galaxy_ids_0, galaxy_ids_1, galaxy_ids_2
+
     if verbose:
         print "Found", len(galaxy_ids), "galaxies."
 
     # load the DCT coefficients
+    if verbose:
+        print 'Loading DCT coefficients...'
     dct_coefs = np.load(base_dir + 'data/DCT_array_all.npy').astype(np.float32)
 
     # first add principal components
+    if verbose:
+        print 'Doing PC Transform for chunk...'
     rpca = cPickle.load(open(base_dir + 'data/DCT_PCA.pickle', 'rb'))
-    X = rpca.transform(dct_coefs)[:, :npcs]
+    dct_coefs -= rpca.mean_
+    # do PCA transform in chunks of 10,000 data points to save memory
+    ndata = dct_coefs.shape[0]
+    chunk_first = 0
+    chunk_last = 10000
+    X = np.empty((ndata, npcs), dtype=np.float32)
+    chunk = 1
+    while chunk_last < ndata:
+        if verbose:
+            print chunk
+        X[chunk_first:chunk_last] = np.dot(dct_coefs[chunk_first:chunk_last], rpca.components_[:npcs].T)
+        chunk_first = chunk_last
+        chunk_last += 10000
+        chunk += 1
+    # add the mean back in before doing LDA
+    dct_coefs += rpca.mean_
+    del rpca
     nfeatures = X.shape[1]
+    pc_labels = ['PC ' + str(i + 1) for i in range(npcs)]
 
     # now add LDA directions
-    lda = cPickle.load(open(base_dir + 'data/DCT_LDA.pickle', 'rb'))
-    X = np.append(X, lda.transform(dct_coefs), axis=1)
-    nlda = X.shape[1] - nfeatures
-    nfeatures = X.shape[1]
-
-    # add the CCA directions
-    cca = cPickle.load(open(base_dir + 'data/DCT_CCA.pickle', 'rb'))
-    X = np.append(X, cca.transform(dct_coefs), axis=1)
-    ncca = X.shape[1] - nfeatures
-    nfeatures = X.shape[1]
+    questions = range(1, 12)
+    lda_labels = []
+    if verbose:
+        print 'Doing LDA transform for question'
+    for question in questions:
+        if verbose:
+           print question, '...'
+        lda = cPickle.load(open(base_dir + 'data/DCT_LDA_' + str(question) + '.pickle', 'rb'))
+        ncoefs = lda.components_.shape[1] / 3
+        dct_idx = np.asarray([np.arange(ncoefs), 2500 + np.arange(ncoefs), 5000 + np.arange(ncoefs)]).ravel()
+        if question == 1:
+            dct_coefs = dct_coefs[:, dct_idx]
+        n_components = lda.components_.shape[0]
+        X = np.append(X, dct_coefs.dot(lda.components_.T), axis=1)
+        lda_labels.extend(['LDA ' + str(question) + '.' + str(i + 1) for i in range(n_components)])
+    del lda
+    del dct_coefs
 
     # add the central pixel colors
-    colors = pool.map(get_central_pixel_colors, galaxy_ids)
+    if verbose:
+        print 'Getting central pixel color...'
+    if do_parallel:
+        colors = pool.map(get_central_pixel_colors, galaxy_ids)
+    else:
+        colors = map(get_central_pixel_colors, galaxy_ids)
     colors = np.asarray(colors)
     X = np.append(X, colors, axis=1)
+    color_labels = ['blue', 'green', 'red']
 
     # finally, add the gaussian fit parameters
-    gauss_features = pool.map(make_gaussfit_features, galaxy_ids)
+    if verbose:
+        print 'Getting gaussian parameters...'
+    if do_parallel:
+        gauss_features = pool.map(make_gaussfit_features, galaxy_ids)
+    else:
+        gauss_features = map(make_gaussfit_features, galaxy_ids)
     X = np.append(X, gauss_features, axis=1)
-
-    # now construct the dataframe
-    pc_labels = ['PC ' + str(i + 1) for i in range(npcs)]
-    lda_labels = ['LDA ' + str(i + 1) for i in range(nlda)]
-    cca_labels = ['CCA ' + str(i + 1) for i in range(ncca)]
-    color_labels = ['blue', 'green', 'red']
     gauss_labels = ['GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux',
                     'GaussMahDist_1', 'GaussMajor_1', 'GaussAratio_1', 'GaussFlux_1',
                     'GaussMahDist_2', 'GaussMajor_2', 'GaussAratio_2', 'GaussFlux_2',
                     'GaussMahDist_3', 'GaussMajor_3', 'GaussAratio_3', 'GaussFlux_3',
                     'GaussMahDist_4', 'GaussMajor_4', 'GaussAratio_4', 'GaussFlux_4']
 
+    # now construct the dataframe
     labels = pc_labels
-    labels.extend(lda_labels)
-    labels.extend(cca_labels)
+    # labels.extend(lda_labels)
     labels.extend(color_labels)
     labels.extend(gauss_labels)
-
+    if verbose:
+        print 'Creating and saving the dataframe...'
     X = pd.DataFrame(data=X, index=galaxy_ids, columns=labels)
     X.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')

@@ -18,10 +18,10 @@ base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 dct_dir = base_dir + 'data/react/'
 plot_dir = base_dir + 'plots/'
 
-doshow = False
+doshow = True
 verbose = True
 do_parallel = False
-ncoefs = 2000
+ncoefs = 200
 
 
 def plot_cca_projections(X_cca, n_components=7):
@@ -119,9 +119,9 @@ if __name__ == "__main__":
     y = y.ix[y.index[good_idx]]
 
     # sanity check
-    idx = np.random.permutation(len(y))[0]
-    idx = np.where(y.index == 119384)[0][0]
-    image_sanity_check(y.index[idx], X[idx])
+    # idx = np.random.permutation(len(y))[0]
+    # idx = np.where(y.index == 119384)[0][0]
+    # image_sanity_check(y.index[idx], X[idx])
 
     # only keep unique values
     unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
@@ -133,7 +133,7 @@ if __name__ == "__main__":
     if verbose:
         print 'Doing CCA...'
     cca = CCA(n_components=len(unique_cols), copy=False)
-    X_cca, y_cca = cca.fit_transform(X, y[unique_cols])
+    X_cca, y_cca = cca.fit_transform(X, y[unique_cols].values.astype(np.float32))
 
     cPickle.dump(cca, open(base_dir + 'data/CCA_DCT.pickle', 'wb'))
 

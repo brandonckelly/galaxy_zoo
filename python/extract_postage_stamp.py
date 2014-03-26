@@ -368,7 +368,7 @@ def extract_gal_image(file):
         np.save(test_dir + source_id + '_' + str(band), cropped_im)
 
         # save the mixture of gaussians model parameters
-        gauss_params.to_csv(data_dir + 'gauss_fit/' + source_id + '_gauss_params.csv')
+        gauss_params.to_csv(data_dir + 'gauss_fit/transfer/' + source_id + '_gauss_params.csv')
 
     return error_messages
 

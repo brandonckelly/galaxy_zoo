@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 from scipy import linalg
 from multiclass_triangle_plot import multiclass_triangle
 from sklearn.lda import LDA
-from linear_discriminant_analysis import LDA as LDA2
 
 class ProbabilisticLDA(object):
 
