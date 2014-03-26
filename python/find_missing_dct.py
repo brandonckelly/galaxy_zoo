@@ -8,12 +8,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cPickle
 from react import REACT2D
-
+from extract_postage_stamp import extract_gal_image
 
 do_missing_dcts = True
-do_parallel = True
-doshow = False
-verbose = False
+do_parallel = False
+doshow = True
+verbose = True
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/react/'
@@ -28,6 +28,9 @@ def do_dct_transform(fbase):
 
     galaxy_id = fbase.split('/')[-1]
     print 'Galaxy ID:', galaxy_id
+
+    print 'Doing Gaussian fit...'
+    extract_gal_image(fbase + '.jpg')
 
     # first get flux ratios (colors)
     total_flux = 0.0

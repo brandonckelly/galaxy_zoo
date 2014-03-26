@@ -20,7 +20,7 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-doshow = False
+doshow = True
 file_dir = test_dir
 do_parallel = True
 
@@ -99,7 +99,7 @@ def extract_gal_image(file):
     peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 8-sigma peaks
     peak_threshold = min(peak_threshold, this_im.max() / 3)
     # apply median filter before finding local maxima
-    filtered_im = median_filter(this_im, size=3)
+    filtered_im = median_filter(this_im, size=10)
     coords = peak_local_max(filtered_im, min_distance=20, threshold_abs=peak_threshold,
                             exclude_border=False)
 
@@ -178,8 +178,10 @@ def extract_gal_image(file):
         amp = this_im[centroid[1], centroid[0]]
 
         iparams[4 * i] = np.log(amp)
-        iparams[4 * i + 1] = 0.5 * np.log(Mxx)
-        iparams[4 * i + 2] = 0.5 * np.log(Myy)
+        # iparams[4 * i + 1] = 0.5 * np.log(Mxx)
+        # iparams[4 * i + 2] = 0.5 * np.log(Myy)
+        iparams[4 * i + 1] = 0.5 * np.log(9.0)
+        iparams[4 * i + 1] = 0.5 * np.log(9.0)
 
     # subtract off the base level of the image as the median of the values along the border
     border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
@@ -306,10 +308,13 @@ def extract_gal_image(file):
         rrange = min(ndim[1] - rcent, rcent)
         crange = min(ndim[0] - ccent, ccent)
         rmin = rcent - arange
+        rmin = max(rmin, 0)
         rmax = rcent + arange
+        rmax = min(rmax, ndim[0])
         cmin = ccent - brange
+        cmin = max(cmin, 0)
         cmax = ccent + brange
-
+        cmax = min(cmax, ndim[1])
         cropped_im = image_fit[rmin:rmax, cmin:cmax].copy()
 
         if doshow:
@@ -365,7 +370,7 @@ def extract_gal_image(file):
             plt.show()
         plt.close()
         # finally, save the cropped image as a numpy array
-        np.save(test_dir + source_id + '_' + str(band), cropped_im)
+        np.save(training_dir + source_id + '_' + str(band), cropped_im)
 
         # save the mixture of gaussians model parameters
         gauss_params.to_csv(data_dir + 'gauss_fit/transfer/' + source_id + '_gauss_params.csv')
