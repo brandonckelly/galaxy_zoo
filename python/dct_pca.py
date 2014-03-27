@@ -15,10 +15,9 @@ dct_dir = base_dir + 'data/react/'
 plot_dir = base_dir + 'plots/'
 
 npca = 500
-doshow = True
+doshow = False
 verbose = True
-do_parallel = False
-load_X = True
+load_X = False
 load_pca = False
 ncoefs = 2500
 
@@ -117,13 +116,15 @@ if __name__ == "__main__":
     mad = np.median(np.abs(row_norm - np.median(row_norm)))
     robsig = 1.48 * mad
     zscore = np.abs(row_norm - np.median(row_norm)) / robsig
-    notout = np.where(zscore < 10)[0]
-    out = np.where(zscore > 10)[0]
+    notout = np.where(zscore < 6)[0]
+    out = np.where(zscore > 6)[0]
     print 'Found', X.shape[0] - len(notout), 'outliers'
     X = X[notout, :]
     galaxy_ids = np.array(list(galaxy_ids))
     if verbose:
         print galaxy_ids[out]
+
+    np.savetxt(base_dir + 'data/outliers.txt', galaxy_ids[out])
 
     if load_pca:
         print 'Loading PCA...'

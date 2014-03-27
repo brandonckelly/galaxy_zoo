@@ -17,7 +17,7 @@ test_dir = base_dir + 'data/images_test_rev1/'
 train_dir = base_dir + 'data/images_training_rev1/'
 
 doshow = False
-verbose = False
+verbose = True
 do_parallel = True
 npcs = 200
 
@@ -27,8 +27,6 @@ def logit(x):
 
 
 def get_central_pixel_colors(galaxy_id):
-    if verbose:
-        print galaxy_id
     # find which directory galaxy is in
     train_file = base_dir + 'data/images_training_rev1/' + str(galaxy_id) + '.jpg'
     test_file = base_dir + 'data/images_test_rev1/' + str(galaxy_id) + '.jpg'
@@ -48,8 +46,6 @@ def get_central_pixel_colors(galaxy_id):
 
 
 def make_gaussfit_features(galaxy_id):
-    if verbose:
-        print galaxy_id
     gfit = pd.read_csv(base_dir + 'data/gauss_fit/transfer/' + str(galaxy_id) + '_gauss_params.csv').set_index('GaussianID')
 
     # first get features for gaussian corresponding to galaxy
@@ -212,10 +208,11 @@ if __name__ == "__main__":
 
     # now construct the dataframe
     labels = pc_labels
-    # labels.extend(lda_labels)
+    labels.extend(lda_labels)
     labels.extend(color_labels)
     labels.extend(gauss_labels)
     if verbose:
         print 'Creating and saving the dataframe...'
+        print X.shape, len(galaxy_ids), len(labels)
     X = pd.DataFrame(data=X, index=galaxy_ids, columns=labels)
     X.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')

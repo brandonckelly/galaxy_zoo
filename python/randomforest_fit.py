@@ -15,7 +15,7 @@ plot_dir = base_dir + 'plots/'
 
 doshow = True
 verbose = True
-njobs = 1
+njobs = 7
 
 
 def get_err(y, yfit):
@@ -53,10 +53,12 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     # first find optimal number of trees
     if ntrees is None:
-        ntrees = [10, 20, 40, 80, 160, 320]
+        ntrees = [250, 300, 330, 360, 400]
         oob_rmse = np.zeros(len(ntrees))
         for i, nt in enumerate(ntrees):
-            rf = RandomForestRegressor(max_features='sqrt', oob_score=True, n_estimators=nt, verbose=verbose,
+            if verbose:
+                print 'Training random forest with T =', nt, ', m = 80'
+            rf = RandomForestRegressor(max_features=80, oob_score=True, n_estimators=nt, verbose=verbose,
                                        n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
@@ -82,13 +84,15 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     if msplit is None:
         # now find optimum value of m (features to consider in split)
-        msplit = [5, 10, 20, 40, 80, 160]
+        msplit = [60, 80, 100, 120, 140]
 
         oob_rmse = np.zeros(len(msplit))
         best_rf = None
         best_rmse = 1e300
         best_err = None
         for i, m in enumerate(msplit):
+            if verbose:
+                print 'Training random forest with T =', ntrees, ', m =', m
             rf = RandomForestRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                        n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
@@ -101,7 +105,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                 best_rf = rf
                 best_rmse = oob_rmse[i]
                 best_err = oob_err.values
-                msplit = m
+                msplit_best = m
 
         if verbose:
             print 'm features | OOB RMSE'
@@ -118,6 +122,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
         if doshow:
             plt.show()
             plt.close()
+        msplit = msplit_best
     else:
         best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                         n_jobs=njobs)
@@ -125,6 +130,8 @@ def train_rf(df, y, ntrees=None, msplit=None):
         yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
         best_err = get_err(y, yhat_oob)
 
+    if verbose:
+        print 'Pickling best RF object...'
     cPickle.dump(best_rf, open(data_dir + 'RF_regressor_ntrees' + str(ntrees) + '_msplit' + str(msplit) +
                                '.pickle', 'wb'))
 
@@ -136,7 +143,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
     pos = np.arange(50) + 0.5
     plt.clf()
     plt.barh(pos, fimp[sidx[-50:]], align='center')
-    plt.yticks(pos, feature_labels[sidx])
+    plt.yticks(pos, feature_labels[sidx[-50:]])
     plt.xlabel("Relative Importance: Top 50")
     plt.savefig(plot_dir + 'feature_importance_RF.png')
     if doshow:
@@ -144,7 +151,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     # plot histogram of the errors
     rmse_by_galaxy = np.sqrt(np.mean(best_err ** 2, axis=1))
-    plt.hist(rmse_by_galaxy, bins=200, histtype='stepfillled')
+    plt.hist(rmse_by_galaxy, bins=200, histtype='stepfilled')
     plt.xlabel('OOB RMSE')
     plt.savefig(plot_dir + 'OOB_RMSE_RF_histogram.png')
     if doshow:
@@ -168,10 +175,21 @@ if __name__ == "__main__":
         print 'Loading training labels...'
     y = pd.read_csv(base_dir + 'data/training_solutions_rev1.csv').set_index('GalaxyID')
 
+    if not np.all(np.isfinite(y)):
+        print 'Error! Non-finite training solutions detected.'
+        exit()
+
     print 'Found', len(y), 'galaxies with training labels.'
 
     # load the training data for the features
     df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+    if len(y.index - df.index) > 0:
+        print 'Error! Missing training data in feature dataframe.'
+        exit()
+
     df = df.ix[y.index]
+
+    if not np.all(np.isfinite(df)):
+        print 'Error! Non-finite feature values detected.'
 
     train_rf(df, y)
