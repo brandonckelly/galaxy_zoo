@@ -22,13 +22,13 @@ if __name__ == "__main__":
     base_name = sys.argv[1]
 
     files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
-    test_ids = [f.split('/')[-1].split('.')[0] for f in files]
+    test_ids = [int(f.split('/')[-1].split('.')[0]) for f in files]
 
     # load the test data for the features
     df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
     df = df.ix[test_ids]
 
-    assert len(df) == len(test_ids)
+    assert np.all(np.isfinite(df.values))
 
     print 'Found', len(test_ids), 'galaxies with test labels.'
     print 'Loading the Regression object...'

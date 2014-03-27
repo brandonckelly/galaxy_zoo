@@ -140,7 +140,7 @@ if __name__ == "__main__":
     train_set = y.index
 
     files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
-    test_set = [f.split('/')[-1].split('.')[0] for f in files]
+    test_set = [int(f.split('/')[-1].split('.')[0]) for f in files]
     assert np.all(np.isfinite(df.ix[test_set]))
 
     if not np.all(np.isfinite(df)):
