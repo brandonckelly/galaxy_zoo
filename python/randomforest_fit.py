@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import glob
-from sklearn.ensemble import RandomForestRegressor
+from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import cPickle
 import pandas as pd
 
@@ -16,6 +16,7 @@ plot_dir = base_dir + 'plots/'
 doshow = True
 verbose = True
 njobs = 7
+do_extratrees = False
 
 
 def get_err(y, yfit):
@@ -51,6 +52,11 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     y_unique = y[unique_cols]
 
+    if do_extratrees:
+        reg_str = 'ET'
+    else:
+        reg_str = 'RF'
+
     # first find optimal number of trees
     if ntrees is None:
         ntrees = [250, 300, 330, 360, 400]
@@ -58,8 +64,12 @@ def train_rf(df, y, ntrees=None, msplit=None):
         for i, nt in enumerate(ntrees):
             if verbose:
                 print 'Training random forest with T =', nt, ', m = 80'
-            rf = RandomForestRegressor(max_features=80, oob_score=True, n_estimators=nt, verbose=verbose,
-                                       n_jobs=njobs)
+            if do_extratrees:
+                rf = ExtraTreesRegressor(max_features=80, oob_score=True, n_estimators=nt, verbose=verbose,
+                                         n_jobs=njobs, bootstrap=True)
+            else:
+                rf = RandomForestRegressor(max_features=80, oob_score=True, n_estimators=nt, verbose=verbose,
+                                           n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
             oob_rmse[i] = np.sqrt(np.mean(get_err(y, yhat_oob).values ** 2))
@@ -75,7 +85,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
         plt.plot(ntrees, oob_rmse, '-o')
         plt.ylabel('OOB RMSE')
         plt.xlabel('Number of Trees')
-        plt.savefig(plot_dir + 'OOB_RMSE_RF_ntrees.png')
+        plt.savefig(plot_dir + 'OOB_RMSE_' + reg_str + '_ntrees.png')
         if doshow:
             plt.show()
             plt.close()
@@ -87,14 +97,17 @@ def train_rf(df, y, ntrees=None, msplit=None):
         msplit = [60, 80, 100, 120, 140]
 
         oob_rmse = np.zeros(len(msplit))
-        best_rf = None
         best_rmse = 1e300
         best_err = None
         for i, m in enumerate(msplit):
             if verbose:
                 print 'Training random forest with T =', ntrees, ', m =', m
-            rf = RandomForestRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose,
-                                       n_jobs=njobs)
+            if do_extratrees:
+                rf = ExtraTreesRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose,
+                                         n_jobs=njobs, bootstrap=True)
+            else:
+                rf = RandomForestRegressor(max_features=m, oob_score=True, n_estimators=ntrees, verbose=verbose,
+                                           n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
             oob_err = get_err(y, yhat_oob)
@@ -102,10 +115,9 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
             if oob_rmse[i] < best_rmse:
                 # save best RF so we don't need to recompute it later
-                best_rf = rf
+                cPickle.dump(rf, open(data_dir + reg_str + '_regressor.pickle', 'wb'))
                 best_rmse = oob_rmse[i]
                 best_err = oob_err.values
-                msplit_best = m
 
         if verbose:
             print 'm features | OOB RMSE'
@@ -118,22 +130,24 @@ def train_rf(df, y, ntrees=None, msplit=None):
         plt.plot(msplit, oob_rmse, '-o')
         plt.ylabel('OOB RMSE')
         plt.xlabel('Number of Feature for Split Criteria')
-        plt.savefig(plot_dir + 'OOB_RMSE_RF_mfeatures.png')
+        plt.savefig(plot_dir + 'OOB_RMSE_' + reg_str + '_mfeatures.png')
         if doshow:
             plt.show()
             plt.close()
-        msplit = msplit_best
+        best_rf = cPickle.load(open(data_dir + reg_str + '_regressor.pickle', 'rb'))
     else:
-        best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
-                                        n_jobs=njobs)
+        if do_extratrees:
+            best_rf = ExtraTreesRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
+                                          n_jobs=njobs, bootstrap=True)
+        else:
+            best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
+                                            n_jobs=njobs)
         best_rf.fit(df.values, y_unique)
         yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
         best_err = get_err(y, yhat_oob)
-
-    if verbose:
-        print 'Pickling best RF object...'
-    cPickle.dump(best_rf, open(data_dir + 'RF_regressor_ntrees' + str(ntrees) + '_msplit' + str(msplit) +
-                               '.pickle', 'wb'))
+        if verbose:
+            print 'Pickling best RF object...'
+        cPickle.dump(best_rf, open(data_dir + reg_str + '_regressor.pickle', 'wb'))
 
     # make feature importance plot
     fimp = best_rf.feature_importances_
@@ -145,7 +159,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
     plt.barh(pos, fimp[sidx[-50:]], align='center')
     plt.yticks(pos, feature_labels[sidx[-50:]])
     plt.xlabel("Relative Importance: Top 50")
-    plt.savefig(plot_dir + 'feature_importance_RF.png')
+    plt.savefig(plot_dir + 'feature_importance_' + reg_str + '.png')
     if doshow:
         plt.show()
 
@@ -153,7 +167,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
     rmse_by_galaxy = np.sqrt(np.mean(best_err ** 2, axis=1))
     plt.hist(rmse_by_galaxy, bins=200, histtype='stepfilled')
     plt.xlabel('OOB RMSE')
-    plt.savefig(plot_dir + 'OOB_RMSE_RF_histogram.png')
+    plt.savefig(plot_dir + 'OOB_RMSE_' + reg_str + '_histogram.png')
     if doshow:
         plt.show()
 
@@ -163,7 +177,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
     plt.loglog(pca_norm, rmse_by_galaxy, '.')
     plt.xlabel('PC Norm')
     plt.ylabel('OOB RMSE')
-    plt.savefig(plot_dir + 'OOB_RMSE_vs_PC_Norm_RF.png')
+    plt.savefig(plot_dir + 'OOB_RMSE_vs_PC_Norm_' + reg_str + '.png')
     if doshow:
         plt.show()
 
@@ -192,4 +206,4 @@ if __name__ == "__main__":
     if not np.all(np.isfinite(df)):
         print 'Error! Non-finite feature values detected.'
 
-    train_rf(df, y)
+    train_rf(df, y, ntrees=400, msplit=140)
