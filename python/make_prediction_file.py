@@ -21,7 +21,6 @@ if __name__ == "__main__":
 
     base_name = sys.argv[1]
 
-
     files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
     test_ids = [f.split('/')[-1].split('.')[0] for f in files]
 
@@ -31,7 +30,7 @@ if __name__ == "__main__":
 
     assert len(df) == len(test_ids)
 
-    print 'Found', len(test_ids), 'galaxies with training labels.'
+    print 'Found', len(test_ids), 'galaxies with test labels.'
     print 'Loading the Regression object...'
     # load the random forest object
     rf = cPickle.load(open(base_dir + 'data/' + base_name + '.pickle', 'rb'))

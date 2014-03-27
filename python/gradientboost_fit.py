@@ -20,6 +20,7 @@ plot_dir = base_dir + 'plots/'
 
 doshow = True
 verbose = True
+use_constraints = False
 
 
 def train_gbt(args):
@@ -70,6 +71,48 @@ def train_gbt(args):
     if doshow:
         plt.show()
 
+    return gbt
+
+
+def write_predictions(gbt_list, df_test, questions, depth):
+    y_predict = np.zeros(len(df_test), len(questions))
+
+    for j in xrange(len(questions)):
+        y_predict[:, j] = gbt_list[j].predict(df_test.values)
+
+    if use_constraints:
+        # Unique predictions Correspond to these values. Need to calculate remaining classes.
+        unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
+                       'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
+                       'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
+                       'Class11.3', 'Class11.4', 'Class11.5']
+
+        # store predictions in a CSV file
+        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=unique_cols)
+
+        # calculate remaining classes using constraints
+        y_predict['Class1.3'] = 1.0 - y_predict['Class1.1'] - y_predict['Class1.2']
+        y_predict['Class2.2'] = y_predict['Class1.2'] - y_predict['Class2.1']
+        y_predict['Class3.2'] = y_predict['Class2.2'] - y_predict['Class3.1']
+        y_predict['Class4.2'] = y_predict['Class2.2'] - y_predict['Class4.1']
+        y_predict['Class5.4'] = y_predict['Class2.2'] - y_predict['Class5.1'] - y_predict['Class5.2'] - \
+                                y_predict['Class5.3']
+        y_predict['Class6.2'] = 1.0 - y_predict['Class6.1']
+        y_predict['Class7.3'] = y_predict['Class1.1'] - y_predict['Class7.1'] - y_predict['Class7.2']
+        y_predict['Class8.7'] = y_predict['Class6.1'] - y_predict['Class8.1'] - y_predict['Class8.2'] - \
+                                y_predict['Class8.3'] - y_predict['Class8.4'] - y_predict['Class8.5'] - \
+                                y_predict['Class8.6']
+        y_predict['Class9.3'] = y_predict['Class2.1'] - y_predict['Class9.1'] - y_predict['Class9.2']
+        y_predict['Class10.3'] = y_predict['Class4.1'] - y_predict['Class10.1'] - y_predict['Class10.2']
+        y_predict['Class11.6'] = y_predict['Class4.1'] - y_predict['Class11.1'] - y_predict['Class11.2'] - \
+                                 y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
+
+    else:
+        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=df.columns)
+
+    # dump to CSV file
+    y_predict.to_csv(base_dir + 'data/GBT_predictions_depth' + str(depth) + '.csv')
+
 
 if __name__ == "__main__":
 
@@ -94,7 +137,11 @@ if __name__ == "__main__":
         print 'Error! Missing training data in feature dataframe.'
         exit()
 
-    df = df.ix[y.index]
+    train_set = y.index
+
+    files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
+    test_set = [f.split('/')[-1].split('.')[0] for f in files]
+    assert np.all(np.isfinite(df.ix[test_set]))
 
     if not np.all(np.isfinite(df)):
         print 'Error! Non-finite feature values detected.'
@@ -102,7 +149,12 @@ if __name__ == "__main__":
     depths = [2, 4, 6, 8, 10]
     for depth in depths:
         args = []
+        print 'Doing depth', depth
         for question in y.columns:
-            args.append((df.values[:1000,:10], y[question].values[:1000], question, depth, df.columns[:10], None))
-        pool.map(train_gbt, args)
+            args.append((df.ix[train_set].values[:1000, :10], y[question].values[:1000], question, depth,
+                         df.columns[:10], None))
+        gbt_list = pool.map(train_gbt, args)
+        print 'Writing predictions for depth', depth, '...'
+        write_predictions(gbt_list, df.ix[test_set], y.columns, depth)
+        del gbt_list  # free memory
 
