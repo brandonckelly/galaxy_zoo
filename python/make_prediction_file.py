@@ -65,4 +65,5 @@ if __name__ == "__main__":
                              y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
 
     # dump to CSV file
+    y_predict.index.name = 'GalaxyID'
     y_predict.to_csv(base_dir + 'data/' + base_name + '_predictions.csv')

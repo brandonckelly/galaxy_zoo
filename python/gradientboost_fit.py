@@ -18,9 +18,10 @@ dct_dir = data_dir + 'react/'
 gbt_dir = data_dir + 'gbt/'
 plot_dir = base_dir + 'plots/'
 
-doshow = True
+doshow = False
 verbose = True
 use_constraints = False
+do_parallel = True
 
 
 def train_gbt(args):
@@ -29,10 +30,10 @@ def train_gbt(args):
 
     # first find optimal number of trees
     if ntrees is None:
-        ntrees = 1000
+        ntrees = 100
     if verbose:
         print 'Training gradient boosted tree for question', question
-    gbt = GradientBoostingRegressor(n_estimators=ntrees, subsample=0.5, max_depth=depth, verbose=verbose)
+    gbt = GradientBoostingRegressor(n_estimators=ntrees, subsample=0.5, max_depth=depth)
     gbt.fit(X, y)
     oob_score = gbt.oob_improvement_.cumsum()
 
@@ -48,12 +49,12 @@ def train_gbt(args):
         plt.show()
         plt.close()
 
-    ntrees = oob_score.argmax()
+    ntrees = oob_score.argmax() + 1
     gbt.n_estimators = ntrees
     gbt.fit(X, y)
 
     if verbose:
-        print 'Pickling best RF object...'
+        print 'Pickling best GBT object...'
     cPickle.dump(gbt, open(gbt_dir + 'GBT_' + question + '_ntrees' + str(ntrees) + '_depth' + str(depth) +
                            '.pickle', 'wb'))
 
@@ -75,7 +76,7 @@ def train_gbt(args):
 
 
 def write_predictions(gbt_list, df_test, questions, depth):
-    y_predict = np.zeros(len(df_test), len(questions))
+    y_predict = np.zeros((len(df_test), len(questions)))
 
     for j in xrange(len(questions)):
         y_predict[:, j] = gbt_list[j].predict(df_test.values)
@@ -108,7 +109,9 @@ def write_predictions(gbt_list, df_test, questions, depth):
                                  y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
 
     else:
-        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=df.columns)
+        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=questions)
+
+    y_predict.index.name = 'GalaxyID'
 
     # dump to CSV file
     y_predict.to_csv(base_dir + 'data/GBT_predictions_depth' + str(depth) + '.csv')
@@ -151,9 +154,12 @@ if __name__ == "__main__":
         args = []
         print 'Doing depth', depth
         for question in y.columns:
-            args.append((df.ix[train_set].values[:1000, :10], y[question].values[:1000], question, depth,
-                         df.columns[:10], None))
-        gbt_list = pool.map(train_gbt, args)
+            args.append((df.ix[train_set].values, y[question], 20, question, depth,
+                         df.columns, None))
+        if do_parallel:
+            gbt_list = pool.map(train_gbt, args)
+        else:
+            gbt_list = map(train_gbt, args)
         print 'Writing predictions for depth', depth, '...'
         write_predictions(gbt_list, df.ix[test_set], y.columns, depth)
         del gbt_list  # free memory
