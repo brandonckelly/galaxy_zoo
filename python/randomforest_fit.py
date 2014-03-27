@@ -110,7 +110,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                            n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
-            oob_err = get_err(y, yhat_oob)
+            oob_err = get_err(y, yhat_oob).values
             oob_rmse[i] = np.sqrt(np.mean(oob_err.values ** 2))
 
             if oob_rmse[i] < best_rmse:
@@ -144,7 +144,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                             n_jobs=njobs)
         best_rf.fit(df.values, y_unique)
         yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
-        best_err = get_err(y, yhat_oob)
+        best_err = get_err(y, yhat_oob).values
         if verbose:
             print 'Pickling best RF object...'
         cPickle.dump(best_rf, open(data_dir + reg_str + '_regressor.pickle', 'wb'))
