@@ -21,19 +21,19 @@ do_extratrees = False
 
 def get_err(y, yfit):
     # calculate remaining classes using constraints
-    yfit['Class1.3'] = 1.0 - yfit['Class1.1'] - yfit['Class1.2']
+    yfit['Class1.2'] = 1.0 - yfit['Class1.1'] - yfit['Class1.3']
     yfit['Class2.2'] = yfit['Class1.2'] - yfit['Class2.1']
     yfit['Class3.2'] = yfit['Class2.2'] - yfit['Class3.1']
     yfit['Class4.2'] = yfit['Class2.2'] - yfit['Class4.1']
-    yfit['Class5.4'] = yfit['Class2.2'] - yfit['Class5.1'] - yfit['Class5.2'] - \
-                            yfit['Class5.3']
+    yfit['Class5.3'] = yfit['Class2.2'] - yfit['Class5.1'] - yfit['Class5.2'] - \
+                            yfit['Class5.4']
     yfit['Class6.2'] = 1.0 - yfit['Class6.1']
-    yfit['Class7.3'] = yfit['Class1.1'] - yfit['Class7.1'] - yfit['Class7.2']
-    yfit['Class8.7'] = yfit['Class6.1'] - yfit['Class8.1'] - yfit['Class8.2'] - \
-                            yfit['Class8.3'] - yfit['Class8.4'] - yfit['Class8.5'] - \
-                            yfit['Class8.6']
-    yfit['Class9.3'] = yfit['Class2.1'] - yfit['Class9.1'] - yfit['Class9.2']
-    yfit['Class10.3'] = yfit['Class4.1'] - yfit['Class10.1'] - yfit['Class10.2']
+    yfit['Class7.2'] = yfit['Class1.1'] - yfit['Class7.1'] - yfit['Class7.3']
+    yfit['Class8.5'] = yfit['Class6.1'] - yfit['Class8.1'] - yfit['Class8.2'] - \
+                            yfit['Class8.3'] - yfit['Class8.4'] - yfit['Class8.6'] - \
+                            yfit['Class8.7']
+    yfit['Class9.1'] = yfit['Class2.1'] - yfit['Class9.2'] - yfit['Class9.3']
+    yfit['Class10.1'] = yfit['Class4.1'] - yfit['Class10.2'] - yfit['Class10.3']
     yfit['Class11.6'] = yfit['Class4.1'] - yfit['Class11.1'] - yfit['Class11.2'] - \
                              yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
 
@@ -45,9 +45,9 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     # Random Forest predictions Correspond to these values. Need to calculate the values for the remaining
     # classes using the summation constraints.
-    unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
-                   'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
-                   'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
+    unique_cols = ['Class1.1', 'Class1.3', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.4',
+                   'Class6.1', 'Class7.1', 'Class7.3', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.6',
+                   'Class8.7', 'Class9.2', 'Class9.3', 'Class10.2', 'Class10.3', 'Class11.1', 'Class11.2',
                    'Class11.3', 'Class11.4', 'Class11.5']
 
     y_unique = y[unique_cols]
@@ -136,6 +136,8 @@ def train_rf(df, y, ntrees=None, msplit=None):
             plt.close()
         best_rf = cPickle.load(open(data_dir + reg_str + '_regressor.pickle', 'rb'))
     else:
+        if verbose:
+            print 'Training RF with ntrees =', ntrees, ', msplit =', msplit
         if do_extratrees:
             best_rf = ExtraTreesRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                           n_jobs=njobs, bootstrap=True)
@@ -173,7 +175,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     # plot errors vs. PCA norm
     pc_cols = [c for c in df.columns if 'PC' in c]
-    pca_norm = np.norm(df[pc_cols], axis=1)
+    pca_norm = np.linalg.norm(df[pc_cols], axis=1)
     plt.loglog(pca_norm, rmse_by_galaxy, '.')
     plt.xlabel('PC Norm')
     plt.ylabel('OOB RMSE')
@@ -206,4 +208,4 @@ if __name__ == "__main__":
     if not np.all(np.isfinite(df)):
         print 'Error! Non-finite feature values detected.'
 
-    train_rf(df, y, ntrees=400, msplit=140)
+    train_rf(df, y, ntrees=35, msplit=20)
