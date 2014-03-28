@@ -30,9 +30,9 @@ def train_gbt(args):
 
     # first find optimal number of trees
     if ntrees is None:
-        ntrees = 100
+        ntrees = 1000
     if verbose:
-        print 'Training gradient boosted tree for question', question
+        print 'Training gradient boosted tree for question', question, 'using', ntrees, 'trees.'
     gbt = GradientBoostingRegressor(n_estimators=ntrees, subsample=0.5, max_depth=depth)
     gbt.fit(X, y)
     oob_score = gbt.oob_improvement_.cumsum()
@@ -154,7 +154,7 @@ if __name__ == "__main__":
         args = []
         print 'Doing depth', depth
         for question in y.columns:
-            args.append((df.ix[train_set].values, y[question], 20, question, depth,
+            args.append((df.ix[train_set].values, y[question], question, depth,
                          df.columns, None))
         if do_parallel:
             gbt_list = pool.map(train_gbt, args)
