@@ -7,6 +7,7 @@ import glob
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import cPickle
 import pandas as pd
+from make_prediction_file import write_rf_predictions
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -20,6 +21,9 @@ do_extratrees = False
 
 
 def get_err(y, yfit):
+    yfit[yfit > 1] = 1.0
+    yfit[yfit < 0] = 0.0
+
     # calculate remaining classes using constraints
     yfit['Class1.2'] = 1.0 - yfit['Class1.1'] - yfit['Class1.3']
     yfit['Class2.2'] = yfit['Class1.2'] - yfit['Class2.1']
@@ -36,6 +40,70 @@ def get_err(y, yfit):
     yfit['Class10.1'] = yfit['Class4.1'] - yfit['Class10.2'] - yfit['Class10.3']
     yfit['Class11.6'] = yfit['Class4.1'] - yfit['Class11.1'] - yfit['Class11.2'] - \
                              yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
+
+    norm = yfit[['Class1.1', 'Class1.2', 'Class1.3']].sum(axis=1)
+    yfit['Class1.1'] /= norm
+    yfit['Class1.2'] /= norm
+    yfit['Class1.3'] /= norm
+
+    norm = yfit[['Class2.1', 'Class2.2']].sum(axis=1)
+    yfit['Class2.1'] /= norm / yfit['Class1.2']
+    yfit['Class2.2'] /= norm / yfit['Class1.2']
+
+    norm = yfit[['Class3.1', 'Class3.2']].sum(axis=1)
+    yfit['Class3.1'] /= norm / yfit['Class2.2']
+    yfit['Class3.2'] /= norm / yfit['Class2.2']
+
+    norm = yfit[['Class4.1', 'Class4.2']].sum(axis=1)
+    yfit['Class4.1'] /= norm / yfit['Class2.2']
+    yfit['Class4.2'] /= norm / yfit['Class2.2']
+
+    norm = yfit[['Class5.1', 'Class5.2', 'Class5.3', 'Class5.4']].sum(axis=1)
+    yfit['Class5.1'] /= norm / yfit['Class2.2']
+    yfit['Class5.2'] /= norm / yfit['Class2.2']
+    yfit['Class5.3'] /= norm / yfit['Class2.2']
+    yfit['Class5.4'] /= norm / yfit['Class2.2']
+
+    norm = yfit[['Class6.1', 'Class6.2']].sum(axis=1)
+    yfit['Class6.1'] /= norm
+    yfit['Class6.2'] /= norm
+
+    norm = yfit[['Class7.1', 'Class7.2', 'Class7.3']].sum(axis=1)
+    yfit['Class7.1'] /= norm / yfit['Class1.1']
+    yfit['Class7.2'] /= norm / yfit['Class1.1']
+    yfit['Class7.3'] /= norm / yfit['Class1.1']
+
+    norm = yfit[['Class8.1', 'Class8.2', 'Class8.3', 'Class8.4',
+                      'Class8.5', 'Class8.6', 'Class8.7']].sum(axis=1)
+    yfit['Class8.1'] /= norm / yfit['Class6.1']
+    yfit['Class8.2'] /= norm / yfit['Class6.1']
+    yfit['Class8.3'] /= norm / yfit['Class6.1']
+    yfit['Class8.4'] /= norm / yfit['Class6.1']
+    yfit['Class8.5'] /= norm / yfit['Class6.1']
+    yfit['Class8.6'] /= norm / yfit['Class6.1']
+    yfit['Class8.7'] /= norm / yfit['Class6.1']
+
+    norm = yfit[['Class9.1', 'Class9.2', 'Class9.3']].sum(axis=1)
+    yfit['Class9.1'] /= norm / yfit['Class2.1']
+    yfit['Class9.2'] /= norm / yfit['Class2.1']
+    yfit['Class9.3'] /= norm / yfit['Class2.1']
+
+    norm = yfit[['Class10.1', 'Class10.2', 'Class10.3']].sum(axis=1)
+    yfit['Class10.1'] /= norm / yfit['Class4.1']
+    yfit['Class10.2'] /= norm / yfit['Class4.1']
+    yfit['Class10.3'] /= norm / yfit['Class4.1']
+
+    norm = yfit[['Class11.1', 'Class11.2', 'Class11.3', 'Class11.4',
+                      'Class11.5', 'Class11.6']].sum(axis=1)
+    yfit['Class11.1'] /= norm / yfit['Class4.1']
+    yfit['Class11.2'] /= norm / yfit['Class4.1']
+    yfit['Class11.3'] /= norm / yfit['Class4.1']
+    yfit['Class11.4'] /= norm / yfit['Class4.1']
+    yfit['Class11.5'] /= norm / yfit['Class4.1']
+    yfit['Class11.6'] /= norm / yfit['Class4.1']
+
+    yfit[yfit > 1] = 1.0
+    yfit[yfit < 0] = 0.0
 
     err = y - yfit
     return err
@@ -72,6 +140,8 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                            n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
+            yhat_oob[yhat_oob > 1] = 1.0
+            yhat_oob[yhat_oob < 0] = 0.0
             oob_rmse[i] = np.sqrt(np.mean(get_err(y, yhat_oob).values ** 2))
 
         if verbose:
@@ -110,6 +180,8 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                            n_jobs=njobs)
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
+            yhat_oob[yhat_oob > 1] = 1.0
+            yhat_oob[yhat_oob < 0] = 0.0
             oob_err = get_err(y, yhat_oob).values
             oob_rmse[i] = np.sqrt(np.mean(oob_err ** 2))
 
@@ -146,6 +218,8 @@ def train_rf(df, y, ntrees=None, msplit=None):
                                             n_jobs=njobs)
         best_rf.fit(df.values, y_unique)
         yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
+        yhat_oob[yhat_oob > 1] = 1.0
+        yhat_oob[yhat_oob < 0] = 0.0
         best_err = get_err(y, yhat_oob).values
         if verbose:
             print 'Pickling best RF object...'
@@ -183,6 +257,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
     if doshow:
         plt.show()
 
+    return best_rf
 
 if __name__ == "__main__":
 
@@ -203,9 +278,21 @@ if __name__ == "__main__":
         print 'Error! Missing training data in feature dataframe.'
         exit()
 
-    df = df.ix[y.index]
+    files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
+    test_set = [int(f.split('/')[-1].split('.')[0]) for f in files]
 
-    if not np.all(np.isfinite(df)):
-        print 'Error! Non-finite feature values detected.'
+    assert np.all(np.isfinite(df.values))
 
-    train_rf(df, y, ntrees=350)
+    print 'Found', len(test_set), 'galaxies with test labels.'
+
+    train_set = y.index
+
+    if not np.all(np.isfinite(df.ix[train_set])):
+        print 'Error! Non-finite feature values detected in training set.'
+    if not np.all(np.isfinite(df.ix[test_set])):
+        print 'Error! Non-finite feature values detected in test set.'
+
+    rf = train_rf(df.ix[train_set], y)
+
+    y_predict = rf.predict(df.ix[test_set])
+    write_rf_predictions(y_predict)

@@ -20,7 +20,6 @@ plot_dir = base_dir + 'plots/'
 
 doshow = False
 verbose = True
-use_constraints = False
 do_parallel = True
 
 
@@ -33,7 +32,11 @@ def train_gbt(args):
         ntrees = 1000
     if verbose:
         print 'Training gradient boosted tree for question', question, 'using', ntrees, 'trees.'
-    gbt = GradientBoostingRegressor(n_estimators=ntrees, subsample=0.5, max_depth=depth)
+    if question == 'Class1.1':
+        verbosity = 1
+    else:
+        verbosity = 0
+    gbt = GradientBoostingRegressor(n_estimators=ntrees, subsample=0.5, max_depth=depth, verbose=verbosity)
     gbt.fit(X, y)
     oob_score = gbt.oob_improvement_.cumsum()
 
@@ -75,46 +78,86 @@ def train_gbt(args):
     return gbt
 
 
-def write_predictions(gbt_list, df_test, questions, depth):
-    y_predict = np.zeros((len(df_test), len(questions)))
+def write_predictions(gbt_list, df_test, questions, depth, use_constraints):
 
+    y_predict = np.zeros((len(df_test), len(questions)))
     for j in xrange(len(questions)):
         y_predict[:, j] = gbt_list[j].predict(df_test.values)
+    y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=questions)
+    y_predict[y_predict > 1] = 1.0
+    y_predict[y_predict < 0] = 0.0
 
     if use_constraints:
-        # Unique predictions Correspond to these values. Need to calculate remaining classes.
-        unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
-                       'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
-                       'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
-                       'Class11.3', 'Class11.4', 'Class11.5']
+        norm = y_predict[['Class1.1', 'Class1.2', 'Class1.3']].sum(axis=1)
+        y_predict['Class1.1'] /= norm
+        y_predict['Class1.2'] /= norm
+        y_predict['Class1.3'] /= norm
 
-        # store predictions in a CSV file
-        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=unique_cols)
+        norm = y_predict[['Class2.1', 'Class2.2']].sum(axis=1)
+        y_predict['Class2.1'] /= norm / y_predict['Class1.2']
+        y_predict['Class2.2'] /= norm / y_predict['Class1.2']
 
-        # calculate remaining classes using constraints
-        y_predict['Class1.3'] = 1.0 - y_predict['Class1.1'] - y_predict['Class1.2']
-        y_predict['Class2.2'] = y_predict['Class1.2'] - y_predict['Class2.1']
-        y_predict['Class3.2'] = y_predict['Class2.2'] - y_predict['Class3.1']
-        y_predict['Class4.2'] = y_predict['Class2.2'] - y_predict['Class4.1']
-        y_predict['Class5.4'] = y_predict['Class2.2'] - y_predict['Class5.1'] - y_predict['Class5.2'] - \
-                                y_predict['Class5.3']
-        y_predict['Class6.2'] = 1.0 - y_predict['Class6.1']
-        y_predict['Class7.3'] = y_predict['Class1.1'] - y_predict['Class7.1'] - y_predict['Class7.2']
-        y_predict['Class8.7'] = y_predict['Class6.1'] - y_predict['Class8.1'] - y_predict['Class8.2'] - \
-                                y_predict['Class8.3'] - y_predict['Class8.4'] - y_predict['Class8.5'] - \
-                                y_predict['Class8.6']
-        y_predict['Class9.3'] = y_predict['Class2.1'] - y_predict['Class9.1'] - y_predict['Class9.2']
-        y_predict['Class10.3'] = y_predict['Class4.1'] - y_predict['Class10.1'] - y_predict['Class10.2']
-        y_predict['Class11.6'] = y_predict['Class4.1'] - y_predict['Class11.1'] - y_predict['Class11.2'] - \
-                                 y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
+        norm = y_predict[['Class3.1', 'Class3.2']].sum(axis=1)
+        y_predict['Class3.1'] /= norm / y_predict['Class2.2']
+        y_predict['Class3.2'] /= norm / y_predict['Class2.2']
 
-    else:
-        y_predict = pd.DataFrame(data=y_predict, index=df_test.index, columns=questions)
+        norm = y_predict[['Class4.1', 'Class4.2']].sum(axis=1)
+        y_predict['Class4.1'] /= norm / y_predict['Class2.2']
+        y_predict['Class4.2'] /= norm / y_predict['Class2.2']
+
+        norm = y_predict[['Class5.1', 'Class5.2', 'Class5.3', 'Class5.4']].sum(axis=1)
+        y_predict['Class5.1'] /= norm / y_predict['Class2.2']
+        y_predict['Class5.2'] /= norm / y_predict['Class2.2']
+        y_predict['Class5.3'] /= norm / y_predict['Class2.2']
+        y_predict['Class5.4'] /= norm / y_predict['Class2.2']
+
+        norm = y_predict[['Class6.1', 'Class6.2']].sum(axis=1)
+        y_predict['Class6.1'] /= norm
+        y_predict['Class6.2'] /= norm
+
+        norm = y_predict[['Class7.1', 'Class7.2', 'Class7.3']].sum(axis=1)
+        y_predict['Class7.1'] /= norm / y_predict['Class1.1']
+        y_predict['Class7.2'] /= norm / y_predict['Class1.1']
+        y_predict['Class7.3'] /= norm / y_predict['Class1.1']
+
+        norm = y_predict[['Class8.1', 'Class8.2', 'Class8.3', 'Class8.4',
+                          'Class8.5', 'Class8.6', 'Class8.7']].sum(axis=1)
+        y_predict['Class8.1'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.2'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.3'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.4'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.5'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.6'] /= norm / y_predict['Class6.1']
+        y_predict['Class8.7'] /= norm / y_predict['Class6.1']
+
+        norm = y_predict[['Class9.1', 'Class9.2', 'Class9.3']].sum(axis=1)
+        y_predict['Class9.1'] /= norm / y_predict['Class2.1']
+        y_predict['Class9.2'] /= norm / y_predict['Class2.1']
+        y_predict['Class9.3'] /= norm / y_predict['Class2.1']
+
+        norm = y_predict[['Class10.1', 'Class10.2', 'Class10.3']].sum(axis=1)
+        y_predict['Class10.1'] /= norm / y_predict['Class4.1']
+        y_predict['Class10.2'] /= norm / y_predict['Class4.1']
+        y_predict['Class10.3'] /= norm / y_predict['Class4.1']
+
+        norm = y_predict[['Class11.1', 'Class11.2', 'Class11.3', 'Class11.4',
+                          'Class11.5', 'Class11.6']].sum(axis=1)
+        y_predict['Class11.1'] /= norm / y_predict['Class4.1']
+        y_predict['Class11.2'] /= norm / y_predict['Class4.1']
+        y_predict['Class11.3'] /= norm / y_predict['Class4.1']
+        y_predict['Class11.4'] /= norm / y_predict['Class4.1']
+        y_predict['Class11.5'] /= norm / y_predict['Class4.1']
+        y_predict['Class11.6'] /= norm / y_predict['Class4.1']
 
     y_predict.index.name = 'GalaxyID'
 
     # dump to CSV file
-    y_predict.to_csv(base_dir + 'data/GBT_predictions_depth' + str(depth) + '.csv')
+    if use_constraints:
+        pfile = base_dir + 'data/GBT_predictions_depth' + str(depth) + '_constrained.csv'
+    else:
+        pfile = base_dir + 'data/GBT_predictions_depth' + str(depth) + '.csv'
+
+    y_predict.to_csv(pfile)
 
 
 if __name__ == "__main__":
@@ -161,6 +204,7 @@ if __name__ == "__main__":
         else:
             gbt_list = map(train_gbt, args)
         print 'Writing predictions for depth', depth, '...'
-        write_predictions(gbt_list, df.ix[test_set], y.columns, depth)
+        write_predictions(gbt_list, df.ix[test_set], y.columns, depth, False)
+        write_predictions(gbt_list, df.ix[test_set], y.columns, depth, True)
         del gbt_list  # free memory
 
