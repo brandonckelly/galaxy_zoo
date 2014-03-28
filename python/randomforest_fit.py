@@ -13,7 +13,7 @@ data_dir = base_dir + 'data/'
 dct_dir = data_dir + 'react/'
 plot_dir = base_dir + 'plots/'
 
-doshow = True
+doshow = False
 verbose = True
 njobs = 7
 do_extratrees = False
@@ -59,7 +59,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     # first find optimal number of trees
     if ntrees is None:
-        ntrees = [250, 300, 330, 360, 400]
+        ntrees = [300, 330, 360, 400, 450]
         oob_rmse = np.zeros(len(ntrees))
         for i, nt in enumerate(ntrees):
             if verbose:
@@ -94,7 +94,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
 
     if msplit is None:
         # now find optimum value of m (features to consider in split)
-        msplit = [60, 80, 100, 120, 140]
+        msplit = [80, 100, 120, 140, 180]
 
         oob_rmse = np.zeros(len(msplit))
         best_rmse = 1e300
@@ -111,13 +111,13 @@ def train_rf(df, y, ntrees=None, msplit=None):
             rf.fit(df.values, y_unique.values)
             yhat_oob = pd.DataFrame(data=rf.oob_prediction_, index=y.index, columns=unique_cols)
             oob_err = get_err(y, yhat_oob).values
-            oob_rmse[i] = np.sqrt(np.mean(oob_err.values ** 2))
+            oob_rmse[i] = np.sqrt(np.mean(oob_err ** 2))
 
             if oob_rmse[i] < best_rmse:
                 # save best RF so we don't need to recompute it later
                 cPickle.dump(rf, open(data_dir + reg_str + '_regressor.pickle', 'wb'))
                 best_rmse = oob_rmse[i]
-                best_err = oob_err.values
+                best_err = oob_err
 
         if verbose:
             print 'm features | OOB RMSE'
@@ -208,4 +208,4 @@ if __name__ == "__main__":
     if not np.all(np.isfinite(df)):
         print 'Error! Non-finite feature values detected.'
 
-    train_rf(df, y, ntrees=35, msplit=20)
+    train_rf(df, y, ntrees=350)

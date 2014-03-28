@@ -39,28 +39,28 @@ if __name__ == "__main__":
     y_predict = rf.predict(df.values)
 
     # Random Forest predictions Correspond to these values. Need to calculate remaining classes.
-    unique_cols = ['Class1.1', 'Class1.2', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.3',
-                   'Class6.1', 'Class7.1', 'Class7.2', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.5',
-                   'Class8.6', 'Class9.1', 'Class9.2', 'Class10.1', 'Class10.2', 'Class11.1', 'Class11.2',
+    unique_cols = ['Class1.1', 'Class1.3', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.4',
+                   'Class6.1', 'Class7.1', 'Class7.3', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.6',
+                   'Class8.7', 'Class9.2', 'Class9.3', 'Class10.2', 'Class10.3', 'Class11.1', 'Class11.2',
                    'Class11.3', 'Class11.4', 'Class11.5']
 
     # store predictions in a CSV file
     y_predict = pd.DataFrame(data=y_predict, index=test_ids, columns=unique_cols)
 
     # calculate remaining classes using constraints
-    y_predict['Class1.3'] = 1.0 - y_predict['Class1.1'] - y_predict['Class1.2']
+    y_predict['Class1.2'] = 1.0 - y_predict['Class1.1'] - y_predict['Class1.3']
     y_predict['Class2.2'] = y_predict['Class1.2'] - y_predict['Class2.1']
     y_predict['Class3.2'] = y_predict['Class2.2'] - y_predict['Class3.1']
     y_predict['Class4.2'] = y_predict['Class2.2'] - y_predict['Class4.1']
-    y_predict['Class5.4'] = y_predict['Class2.2'] - y_predict['Class5.1'] - y_predict['Class5.2'] - \
-                            y_predict['Class5.3']
+    y_predict['Class5.3'] = y_predict['Class2.2'] - y_predict['Class5.1'] - y_predict['Class5.2'] - \
+                            y_predict['Class5.4']
     y_predict['Class6.2'] = 1.0 - y_predict['Class6.1']
-    y_predict['Class7.3'] = y_predict['Class1.1'] - y_predict['Class7.1'] - y_predict['Class7.2']
-    y_predict['Class8.7'] = y_predict['Class6.1'] - y_predict['Class8.1'] - y_predict['Class8.2'] - \
-                            y_predict['Class8.3'] - y_predict['Class8.4'] - y_predict['Class8.5'] - \
-                            y_predict['Class8.6']
-    y_predict['Class9.3'] = y_predict['Class2.1'] - y_predict['Class9.1'] - y_predict['Class9.2']
-    y_predict['Class10.3'] = y_predict['Class4.1'] - y_predict['Class10.1'] - y_predict['Class10.2']
+    y_predict['Class7.2'] = y_predict['Class1.1'] - y_predict['Class7.1'] - y_predict['Class7.3']
+    y_predict['Class8.5'] = y_predict['Class6.1'] - y_predict['Class8.1'] - y_predict['Class8.2'] - \
+                            y_predict['Class8.3'] - y_predict['Class8.4'] - y_predict['Class8.6'] - \
+                            y_predict['Class8.7']
+    y_predict['Class9.1'] = y_predict['Class2.1'] - y_predict['Class9.2'] - y_predict['Class9.3']
+    y_predict['Class10.1'] = y_predict['Class4.1'] - y_predict['Class10.2'] - y_predict['Class10.3']
     y_predict['Class11.6'] = y_predict['Class4.1'] - y_predict['Class11.1'] - y_predict['Class11.2'] - \
                              y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
 
