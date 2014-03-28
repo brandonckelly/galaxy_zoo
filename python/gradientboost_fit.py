@@ -92,33 +92,58 @@ def write_predictions(gbt_list, df_test, questions, depth, use_constraints):
         y_predict['Class1.1'] /= norm
         y_predict['Class1.2'] /= norm
         y_predict['Class1.3'] /= norm
+        zeros = (norm == 0)
+        y_predict['Class1.1'][zeros] = 0
+        y_predict['Class1.2'][zeros] = 0
+        y_predict['Class1.3'][zeros] = 0
 
         norm = y_predict[['Class2.1', 'Class2.2']].sum(axis=1)
         y_predict['Class2.1'] /= norm / y_predict['Class1.2']
         y_predict['Class2.2'] /= norm / y_predict['Class1.2']
+        zeros = np.logical_or(norm == 0, y_predict['Class1.2'] == 0)
+        y_predict['Class2.1'][zeros] = 0
+        y_predict['Class2.2'][zeros] = 0
 
         norm = y_predict[['Class3.1', 'Class3.2']].sum(axis=1)
         y_predict['Class3.1'] /= norm / y_predict['Class2.2']
         y_predict['Class3.2'] /= norm / y_predict['Class2.2']
+        zeros = np.logical_or(norm == 0, y_predict['Class2.2'] == 0)
+        y_predict['Class3.1'][zeros] = 0
+        y_predict['Class3.2'][zeros] = 0
 
         norm = y_predict[['Class4.1', 'Class4.2']].sum(axis=1)
         y_predict['Class4.1'] /= norm / y_predict['Class2.2']
         y_predict['Class4.2'] /= norm / y_predict['Class2.2']
+        zeros = np.logical_or(norm == 0, y_predict['Class2.2'] == 0)
+        y_predict['Class4.1'][zeros] = 0
+        y_predict['Class4.2'][zeros] = 0
 
         norm = y_predict[['Class5.1', 'Class5.2', 'Class5.3', 'Class5.4']].sum(axis=1)
         y_predict['Class5.1'] /= norm / y_predict['Class2.2']
         y_predict['Class5.2'] /= norm / y_predict['Class2.2']
         y_predict['Class5.3'] /= norm / y_predict['Class2.2']
         y_predict['Class5.4'] /= norm / y_predict['Class2.2']
+        zeros = np.logical_or(norm == 0, y_predict['Class2.2'] == 0)
+        y_predict['Class5.1'][zeros] = 0
+        y_predict['Class5.2'][zeros] = 0
+        y_predict['Class5.3'][zeros] = 0
+        y_predict['Class5.4'][zeros] = 0
 
         norm = y_predict[['Class6.1', 'Class6.2']].sum(axis=1)
         y_predict['Class6.1'] /= norm
         y_predict['Class6.2'] /= norm
+        zeros = (norm == 0)
+        y_predict['Class6.1'][zeros] = 0
+        y_predict['Class6.2'][zeros] = 0
 
         norm = y_predict[['Class7.1', 'Class7.2', 'Class7.3']].sum(axis=1)
         y_predict['Class7.1'] /= norm / y_predict['Class1.1']
         y_predict['Class7.2'] /= norm / y_predict['Class1.1']
         y_predict['Class7.3'] /= norm / y_predict['Class1.1']
+        zeros = np.logical_or(norm == 0, y_predict['Class1.1'] == 0)
+        y_predict['Class7.1'][zeros] = 0
+        y_predict['Class7.2'][zeros] = 0
+        y_predict['Class7.3'][zeros] = 0
 
         norm = y_predict[['Class8.1', 'Class8.2', 'Class8.3', 'Class8.4',
                           'Class8.5', 'Class8.6', 'Class8.7']].sum(axis=1)
@@ -129,16 +154,32 @@ def write_predictions(gbt_list, df_test, questions, depth, use_constraints):
         y_predict['Class8.5'] /= norm / y_predict['Class6.1']
         y_predict['Class8.6'] /= norm / y_predict['Class6.1']
         y_predict['Class8.7'] /= norm / y_predict['Class6.1']
+        zeros = np.logical_or(norm == 0, y_predict['Class6.1'] == 0)
+        y_predict['Class8.1'][zeros] = 0
+        y_predict['Class8.2'][zeros] = 0
+        y_predict['Class8.3'][zeros] = 0
+        y_predict['Class8.4'][zeros] = 0
+        y_predict['Class8.5'][zeros] = 0
+        y_predict['Class8.6'][zeros] = 0
+        y_predict['Class8.7'][zeros] = 0
 
         norm = y_predict[['Class9.1', 'Class9.2', 'Class9.3']].sum(axis=1)
         y_predict['Class9.1'] /= norm / y_predict['Class2.1']
         y_predict['Class9.2'] /= norm / y_predict['Class2.1']
         y_predict['Class9.3'] /= norm / y_predict['Class2.1']
+        zeros = np.logical_or(norm == 0, y_predict['Class2.1'] == 0)
+        y_predict['Class9.1'][zeros] = 0
+        y_predict['Class9.2'][zeros] = 0
+        y_predict['Class9.3'][zeros] = 0
 
         norm = y_predict[['Class10.1', 'Class10.2', 'Class10.3']].sum(axis=1)
         y_predict['Class10.1'] /= norm / y_predict['Class4.1']
         y_predict['Class10.2'] /= norm / y_predict['Class4.1']
         y_predict['Class10.3'] /= norm / y_predict['Class4.1']
+        zeros = np.logical_or(norm == 0, y_predict['Class4.1'] == 0)
+        y_predict['Class10.1'][zeros] = 0
+        y_predict['Class10.2'][zeros] = 0
+        y_predict['Class10.3'][zeros] = 0
 
         norm = y_predict[['Class11.1', 'Class11.2', 'Class11.3', 'Class11.4',
                           'Class11.5', 'Class11.6']].sum(axis=1)
@@ -148,6 +189,13 @@ def write_predictions(gbt_list, df_test, questions, depth, use_constraints):
         y_predict['Class11.4'] /= norm / y_predict['Class4.1']
         y_predict['Class11.5'] /= norm / y_predict['Class4.1']
         y_predict['Class11.6'] /= norm / y_predict['Class4.1']
+        zeros = np.logical_or(norm == 0, y_predict['Class4.1'] == 0)
+        y_predict['Class11.1'][zeros] = 0
+        y_predict['Class11.2'][zeros] = 0
+        y_predict['Class11.3'][zeros] = 0
+        y_predict['Class11.4'][zeros] = 0
+        y_predict['Class11.5'][zeros] = 0
+        y_predict['Class11.6'][zeros] = 0
 
     y_predict.index.name = 'GalaxyID'
 
@@ -192,7 +240,7 @@ if __name__ == "__main__":
     if not np.all(np.isfinite(df)):
         print 'Error! Non-finite feature values detected.'
 
-    depths = [2, 4, 6, 8, 10]
+    depths = [4, 6, 8, 10, 12]
     for depth in depths:
         args = []
         print 'Doing depth', depth
