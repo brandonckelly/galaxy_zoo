@@ -343,4 +343,4 @@ if __name__ == "__main__":
     rf = train_rf(df.ix[train_set], y)
 
     yfit = rf.predict(df.ix[test_set])
-    write_rf_predictions(yfit)
+    write_rf_predictions(yfit, test_set)
