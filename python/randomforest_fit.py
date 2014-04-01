@@ -7,7 +7,7 @@ import glob
 from sklearn.ensemble import RandomForestRegressor, ExtraTreesRegressor
 import cPickle
 import pandas as pd
-from make_prediction_file import write_rf_predictions
+from make_prediction_file import write_predictions
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -344,4 +344,4 @@ if __name__ == "__main__":
     rf = train_rf(df.ix[train_set], y)
 
     yfit = rf.predict(df.ix[test_set])
-    write_rf_predictions(yfit, test_set)
+    write_predictions(yfit, test_set)

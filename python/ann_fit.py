@@ -1,5 +1,3 @@
-#!/usr/bin/env python
-
 __author__ = 'brandonkelly'
 
 import numpy as np
@@ -13,7 +11,7 @@ import climate
 import theanets
 import glob
 from randomforest_fit import get_err
-from make_prediction_file import write_rf_predictions
+from make_prediction_file import write_predictions
 from dct_to_lda import remove_outliers
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
@@ -175,7 +173,7 @@ if __name__ == "__main__":
         yfit[yfit > 1] = 1.0
         if do_all:
             yfit = pd.DataFrame(data=yfit, index=y.ix[test_set].index, columns=cols)
-        write_rf_predictions(yfit, test_set, ann_id, usefull=do_all)
+        write_predictions(yfit, test_set, ann_id, usefull=do_all)
 
     # plt.plot(l1_regs, valerr, lw=2)
     # plt.ylabel('Validation Error')

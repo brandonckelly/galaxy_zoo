@@ -1,18 +1,15 @@
 __author__ = 'brandonkelly'
 
-__author__ = 'brandonkelly'
-
 import numpy as np
 import os
-import matplotlib.pyplot as plt
 import pandas as pd
 import glob
-from dct_to_lda import remove_outliers
 from make_feature_dataframe import make_gaussfit_features
 from extract_postage_stamp import extract_gal_image
 import cPickle
 from galaxies_to_dct import do_dct_transform
 import multiprocessing
+
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -22,15 +19,24 @@ dct_dir = data_dir + 'react/'
 ann_dir = data_dir + 'nnets/'
 plot_dir = base_dir + 'plots/'
 
-doshow = False
 verbose = True
-do_parallel = False
+do_parallel = True
 
 test_files = glob.glob(test_dir + '*jpg')
 train_files = glob.glob(train_dir + '*jpg')
 
 rpca = cPickle.load(open(base_dir + 'data/DCT_PCA.pickle', 'rb'))
 npcs = 200
+
+questions = range(1, 12)
+lda_list = []
+if verbose:
+    print 'Loading LDA transform for question'
+for question in questions:
+    if verbose:
+        print question, '...'
+    lda = cPickle.load(open(base_dir + 'data/DCT_LDA_' + str(question) + '.pickle', 'rb'))
+    lda_list.append(lda)
 
 
 def rerun_pipeline(galaxy_id):
@@ -53,12 +59,12 @@ def rerun_pipeline(galaxy_id):
 
     err_msg = extract_gal_image(file_name)
 
-    do_dct_transform((galaxy_id, file_dir))
+    do_dct_transform((str(galaxy_id), file_dir))
 
     dct_coefs = []
     ncoefs = 2500
     for band in range(3):
-        image_file = open(dct_dir + galaxy_id + '_' + str(band) + '_dct.pickle', 'rb')
+        image_file = open(dct_dir + str(galaxy_id) + '_' + str(band) + '_dct.pickle', 'rb')
         dct = cPickle.load(image_file)
         image_file.close()
         if len(dct.coefs) < ncoefs:
@@ -69,30 +75,25 @@ def rerun_pipeline(galaxy_id):
     dct_coefs = np.hstack(dct_coefs)
     dct_coefs -= rpca.mean_
 
+    print 'Getting PCA and LDA transformed coefficients...'
+
     pc_coefs = np.dot(rpca.components_[:npcs], dct_coefs)
 
     dct_coefs += rpca.mean_
     # now add LDA directions
-    questions = range(1, 12)
     lda_coefs = []
-    if verbose:
-        print 'Doing LDA transform for question'
     for question in questions:
-        if verbose:
-           print question, '...'
-        lda = cPickle.load(open(base_dir + 'data/DCT_LDA_' + str(question) + '.pickle', 'rb'))
+        lda = lda_list[question-1]
         ncoefs = lda.components_.shape[1] / 3
         dct_idx = np.asarray([np.arange(ncoefs), 2500 + np.arange(ncoefs), 5000 + np.arange(ncoefs)]).ravel()
         if question == 1:
             dct_coefs = dct_coefs[dct_idx]
-        n_components = lda.components_.shape[0]
         lda_proj = lda.components_.dot(dct_coefs)
         lda_coefs.append(lda_proj)
-    del lda
 
     lda_coefs = np.hstack(lda_coefs)
 
-    # now add
+    # now add gaussian features
     gfeatures = make_gaussfit_features(galaxy_id)
 
     return pc_coefs, lda_coefs, gfeatures
@@ -126,10 +127,9 @@ if __name__ == "__main__":
     robsig = 1.48 * mad
     zscore = np.abs(row_norm - np.median(row_norm)) / robsig
     out = np.where(zscore > thresh)[0]
-    print 'Found', len(out), 'outliers'
+    print 'Found', len(out), 'outliers out of', len(df), 'galaxies.'
 
     outliers = df.index[out]
-
     if do_parallel:
         features = pool.map(rerun_pipeline, outliers)
     else:

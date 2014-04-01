@@ -17,7 +17,7 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-doshow = True
+doshow = False
 image_dir = test_dir
 max_order0 = 50
 verbose = False

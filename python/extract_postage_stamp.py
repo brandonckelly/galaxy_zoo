@@ -20,7 +20,7 @@ training_dir = data_dir + 'images_training_rev1/'
 test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
-doshow = True
+doshow = False
 file_dir = test_dir
 do_parallel = True
 
@@ -85,6 +85,7 @@ def sum_of_gaussians_error(params, image, xgrid, ygrid, xcent, ycent):
 def extract_gal_image(file):
 
     source_id = file.split('/')[-1].split('.')[0]
+    image_dir = os.path.dirname(file) + '/'
     print source_id
     im = np.array(Image.open(file)).astype(float)
     ndim = im.shape
@@ -257,7 +258,14 @@ def extract_gal_image(file):
 
     # crop the image to 2.5-sigma
     arange = int(2.5 * np.abs(gauss_params['aminor'][0]))
+    if arange < 1:
+        arange = 20.0
+        gauss_params['aminor'][0] = 1.0
     brange = int(2.5 * np.abs(gauss_params['amajor'][0]))
+    if brange < 10:
+        brange = 20.0
+    if gauss_params['amajor'][0] < 1:
+        gauss_params['amajor'][0] = 1.0
 
     for band in [1, 0, 2]:  # do middle band first since we want to use its asymmetry info
         this_im = im[:, :, band]
@@ -305,8 +313,6 @@ def extract_gal_image(file):
         # now crop the image to 2.5 sigma
         rcent = image_fit.shape[0] / 2
         ccent = image_fit.shape[1] / 2
-        rrange = min(ndim[1] - rcent, rcent)
-        crange = min(ndim[0] - ccent, ccent)
         rmin = rcent - arange
         rmin = max(rmin, 0)
         rmax = rcent + arange
@@ -370,7 +376,8 @@ def extract_gal_image(file):
             plt.show()
         plt.close()
         # finally, save the cropped image as a numpy array
-        np.save(training_dir + source_id + '_' + str(band), cropped_im)
+        print 'Saving file to', image_dir + source_id + '_' + str(band) + '.npy'
+        np.save(image_dir + source_id + '_' + str(band), cropped_im)
 
         # save the mixture of gaussians model parameters
         gauss_params.to_csv(data_dir + 'gauss_fit/transfer/' + source_id + '_gauss_params.csv')

@@ -55,6 +55,8 @@ def make_gaussfit_features(galaxy_id):
     gal_major = np.log(gal['amajor'])
     gal_aratio = logit(gal['aminor'] / gfit.ix[0]['amajor'])
     gal_cent_distance = 0.5 * np.log((gal['xcent'] - 212.0) ** 2 + (gal['ycent'] - 212.0) ** 2)
+    if gal['amplitude'] <= 0:
+        gal['amplitude'] = 0.001
     gal_flux = np.log(2.0 * np.pi * gal['amplitude'] * gal['amajor'] * gal['aminor'])
 
     features = np.asarray([gal_cent_distance, gal_major, gal_aratio, gal_flux])
