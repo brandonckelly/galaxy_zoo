@@ -47,9 +47,9 @@ def clean_features(df):
 
 def train_ann(X, y, l2_reg, l1_reg=0.0):
 
-    train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y, random_state=1234)
+    train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y)
 
-    n_hidden = 1000
+    n_hidden = 500
     layers = (X.shape[1], n_hidden, y.shape[1])
     experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l2=l2_reg,
                                      hidden_l1=l1_reg)
@@ -136,7 +136,7 @@ if __name__ == "__main__":
     nstarts = 15
     for i in range(nstarts):
 
-        ann_id = 'HF_L2-' + str(l2reg) + '_arch-1000_L1-' + str(l1reg) + '_trial' + str(i+1) + '.pickle'
+        ann_id = 'HF_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_trial' + str(i+1) + '.pickle'
 
         print 'Training the ANN...'
         ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg, l1_reg=l1reg)
