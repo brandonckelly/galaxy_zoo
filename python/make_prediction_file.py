@@ -13,7 +13,7 @@ dct_dir = base_dir + 'data/react/'
 training_dir = base_dir + 'data/images_training_rev1/'
 
 
-def write_rf_predictions(y_predict, test_ids):
+def write_rf_predictions(y_predict, test_ids, base_name):
     # Random Forest predictions Correspond to these values. Need to calculate remaining classes.
     unique_cols = ['Class1.1', 'Class1.3', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.4',
                    'Class6.1', 'Class7.1', 'Class7.3', 'Class8.1', 'Class8.2', 'Class8.3', 'Class8.4', 'Class8.6',
@@ -183,4 +183,4 @@ if __name__ == "__main__":
     print 'Predicting the values...'
     y_predict = rf.predict(df.values)
 
-    write_rf_predictions(y_predict, test_ids)
+    write_rf_predictions(y_predict, test_ids, base_name)
