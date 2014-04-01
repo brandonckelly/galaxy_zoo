@@ -1,1 +1,154 @@
 __author__ = 'brandonkelly'
+
+__author__ = 'brandonkelly'
+
+import numpy as np
+import os
+import matplotlib.pyplot as plt
+import pandas as pd
+import glob
+from dct_to_lda import remove_outliers
+from make_feature_dataframe import make_gaussfit_features
+from extract_postage_stamp import extract_gal_image
+import cPickle
+from galaxies_to_dct import do_dct_transform
+import multiprocessing
+
+base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
+data_dir = base_dir + 'data/'
+test_dir = data_dir + 'images_test_rev1/'
+train_dir = data_dir + 'images_train_rev1/'
+dct_dir = data_dir + 'react/'
+ann_dir = data_dir + 'nnets/'
+plot_dir = base_dir + 'plots/'
+
+doshow = False
+verbose = True
+do_parallel = False
+
+test_files = glob.glob(test_dir + '*jpg')
+train_files = glob.glob(train_dir + '*jpg')
+
+rpca = cPickle.load(open(base_dir + 'data/DCT_PCA.pickle', 'rb'))
+npcs = 200
+
+
+def rerun_pipeline(galaxy_id):
+    # steps: extract_gal_image, run DCT transform, project onto PCA, project onto LDA, compute gaussian features
+    if verbose:
+        print 'Rerunning pipeline for', galaxy_id
+
+    # find where this JPG image is
+    train_name = train_dir + str(galaxy_id) + '.jpg'
+    test_name = test_dir + str(galaxy_id) + '.jpg'
+    if train_name in train_files:
+        file_dir = train_dir
+        file_name = train_name
+    elif test_name in test_files:
+        file_dir = test_dir
+        file_name = test_name
+    else:
+        err_msg = 'Cannot find file for', galaxy_id
+        return
+
+    err_msg = extract_gal_image(file_name)
+
+    do_dct_transform((galaxy_id, file_dir))
+
+    dct_coefs = []
+    ncoefs = 2500
+    for band in range(3):
+        image_file = open(dct_dir + galaxy_id + '_' + str(band) + '_dct.pickle', 'rb')
+        dct = cPickle.load(image_file)
+        image_file.close()
+        if len(dct.coefs) < ncoefs:
+            nzeros = ncoefs - len(dct.coefs)
+            dct.coefs = np.append(dct.coefs, np.zeros(nzeros))
+        dct_coefs.append(dct.coefs[:ncoefs])
+
+    dct_coefs = np.hstack(dct_coefs)
+    dct_coefs -= rpca.mean_
+
+    pc_coefs = np.dot(rpca.components_[:npcs], dct_coefs)
+
+    dct_coefs += rpca.mean_
+    # now add LDA directions
+    questions = range(1, 12)
+    lda_coefs = []
+    if verbose:
+        print 'Doing LDA transform for question'
+    for question in questions:
+        if verbose:
+           print question, '...'
+        lda = cPickle.load(open(base_dir + 'data/DCT_LDA_' + str(question) + '.pickle', 'rb'))
+        ncoefs = lda.components_.shape[1] / 3
+        dct_idx = np.asarray([np.arange(ncoefs), 2500 + np.arange(ncoefs), 5000 + np.arange(ncoefs)]).ravel()
+        if question == 1:
+            dct_coefs = dct_coefs[dct_idx]
+        n_components = lda.components_.shape[0]
+        lda_proj = lda.components_.dot(dct_coefs)
+        lda_coefs.append(lda_proj)
+    del lda
+
+    lda_coefs = np.hstack(lda_coefs)
+
+    # now add
+    gfeatures = make_gaussfit_features(galaxy_id)
+
+    return pc_coefs, lda_coefs, gfeatures
+
+
+if __name__ == "__main__":
+
+    njobs = multiprocessing.cpu_count() - 1
+
+    pool = multiprocessing.Pool(njobs)
+    pool.map(int, range(njobs))
+
+    # load the data for the features
+    df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+
+    assert np.all(np.isfinite(df.values))
+
+    # find the outliers
+    pc_names = []
+    for c in df.columns:
+        if 'PC' in c:
+            pc_names.append(c)
+
+    if verbose:
+        print 'Finding the outliers...'
+    X = df[pc_names].values
+    thresh = 6.0
+
+    row_norm = np.linalg.norm(X - np.median(X, axis=0), axis=1)
+    mad = np.median(np.abs(row_norm - np.median(row_norm)))
+    robsig = 1.48 * mad
+    zscore = np.abs(row_norm - np.median(row_norm)) / robsig
+    out = np.where(zscore > thresh)[0]
+    print 'Found', len(out), 'outliers'
+
+    outliers = df.index[out]
+
+    if do_parallel:
+        features = pool.map(rerun_pipeline, outliers)
+    else:
+        features = map(rerun_pipeline, outliers)
+
+    lda_names = []
+    for c in df.columns:
+        if 'LD' in c:
+            lda_names.append(c)
+
+    gauss_labels = ['GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux',
+                    'GaussMahDist_1', 'GaussMajor_1', 'GaussAratio_1', 'GaussFlux_1',
+                    'GaussMahDist_2', 'GaussMajor_2', 'GaussAratio_2', 'GaussFlux_2',
+                    'GaussMahDist_3', 'GaussMajor_3', 'GaussAratio_3', 'GaussFlux_3',
+                    'GaussMahDist_4', 'GaussMajor_4', 'GaussAratio_4', 'GaussFlux_4']
+
+    for out, feature in zip(outliers, features):
+        df[pc_names].ix[out] = features[0]
+        df[lda_names].ix[out] = features[1]
+        df[gauss_labels].ix[out] = features[3]
+
+    df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')

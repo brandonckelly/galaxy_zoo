@@ -20,26 +20,27 @@ njobs = 7
 do_extratrees = False
 
 
-def get_err(y, yfit):
+def get_err(y, yfit, usefull=False):
     yfit[yfit > 1] = 1.0
     yfit[yfit < 0] = 0.0
 
-    # calculate remaining classes using constraints
-    yfit['Class1.2'] = 1.0 - yfit['Class1.1'] - yfit['Class1.3']
-    yfit['Class2.2'] = yfit['Class1.2'] - yfit['Class2.1']
-    yfit['Class3.2'] = yfit['Class2.2'] - yfit['Class3.1']
-    yfit['Class4.2'] = yfit['Class2.2'] - yfit['Class4.1']
-    yfit['Class5.3'] = yfit['Class2.2'] - yfit['Class5.1'] - yfit['Class5.2'] - \
-                            yfit['Class5.4']
-    yfit['Class6.2'] = 1.0 - yfit['Class6.1']
-    yfit['Class7.2'] = yfit['Class1.1'] - yfit['Class7.1'] - yfit['Class7.3']
-    yfit['Class8.5'] = yfit['Class6.1'] - yfit['Class8.1'] - yfit['Class8.2'] - \
-                            yfit['Class8.3'] - yfit['Class8.4'] - yfit['Class8.6'] - \
-                            yfit['Class8.7']
-    yfit['Class9.1'] = yfit['Class2.1'] - yfit['Class9.2'] - yfit['Class9.3']
-    yfit['Class10.1'] = yfit['Class4.1'] - yfit['Class10.2'] - yfit['Class10.3']
-    yfit['Class11.6'] = yfit['Class4.1'] - yfit['Class11.1'] - yfit['Class11.2'] - \
-                             yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
+    if not usefull:
+        # calculate remaining classes using constraints
+        yfit['Class1.2'] = 1.0 - yfit['Class1.1'] - yfit['Class1.3']
+        yfit['Class2.2'] = yfit['Class1.2'] - yfit['Class2.1']
+        yfit['Class3.2'] = yfit['Class2.2'] - yfit['Class3.1']
+        yfit['Class4.2'] = yfit['Class2.2'] - yfit['Class4.1']
+        yfit['Class5.3'] = yfit['Class2.2'] - yfit['Class5.1'] - yfit['Class5.2'] - \
+                                yfit['Class5.4']
+        yfit['Class6.2'] = 1.0 - yfit['Class6.1']
+        yfit['Class7.2'] = yfit['Class1.1'] - yfit['Class7.1'] - yfit['Class7.3']
+        yfit['Class8.5'] = yfit['Class6.1'] - yfit['Class8.1'] - yfit['Class8.2'] - \
+                                yfit['Class8.3'] - yfit['Class8.4'] - yfit['Class8.6'] - \
+                                yfit['Class8.7']
+        yfit['Class9.1'] = yfit['Class2.1'] - yfit['Class9.2'] - yfit['Class9.3']
+        yfit['Class10.1'] = yfit['Class4.1'] - yfit['Class10.2'] - yfit['Class10.3']
+        yfit['Class11.6'] = yfit['Class4.1'] - yfit['Class11.1'] - yfit['Class11.2'] - \
+                                 yfit['Class11.3'] - yfit['Class11.4'] - yfit['Class11.5']
 
     norm = yfit[['Class1.1', 'Class1.2', 'Class1.3']].sum(axis=1)
     yfit['Class1.1'] /= norm

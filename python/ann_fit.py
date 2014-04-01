@@ -27,6 +27,7 @@ verbose = True
 
 climate.enable_default_logging()
 
+do_all = False
 
 def clean_features(df):
 
@@ -47,10 +48,10 @@ def train_ann(X, y, l2_reg, l1_reg=0.0):
 
     train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y, random_state=1234)
 
-    n_hidden = 1000
-    layers = (X.shape[1], n_hidden, y.shape[1])
+    n_hidden = 200
+    layers = (X.shape[1], n_hidden, n_hidden, y.shape[1])
     experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l2=l2_reg,
-                                     hidden_l2=l2_reg, weight_l1=l1_reg, hidden_l1=l1_reg)
+                                     hidden_l1=l1_reg)
 
     # experiment.add_dataset('train', (train_set_x, train_set_y))
     # experiment.add_dataset('valid', (valid_set_x, valid_set_y))
@@ -61,6 +62,8 @@ def train_ann(X, y, l2_reg, l1_reg=0.0):
 
 
 if __name__ == "__main__":
+
+    ### best thus far is l2-reg = 0.001
 
     # load the training labels
     if verbose:
@@ -120,15 +123,16 @@ if __name__ == "__main__":
 
     print 'Using a training set of', len(train_set), 'and a validation set of', len(valid_set)
 
-    l2_regs = [0.0005, 0.0007, 0.0009, 0.0011, 0.0013, 0.0015]
+    l1_regs = [0.0001, 0.0002, 0.0003, 0.0004, 0.0005]
+    l2reg = 0.001
     valerr = []
 
-    for l2reg in l2_regs:
+    for l1reg in l1_regs:
 
-        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-1000.pickle'
+        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-200-200_L1-' + str(l1reg) + '.pickle'
 
         print 'Training the ANN...'
-        ann = train_ann(df_train.ix[train_set].values, y[unique_cols].ix[train_set].values, l2reg)
+        ann = train_ann(df_train.ix[train_set].values, y[unique_cols].ix[train_set].values, l2reg, l1_reg=l1reg)
 
         t2 = time.clock()
 
@@ -140,9 +144,13 @@ if __name__ == "__main__":
         yhat = ann.predict(df_train.ix[train_set].values)
         yhat[yhat < 0] = 0.0
         yhat[yhat > 1] = 1.0
-        yhat = pd.DataFrame(data=yhat, index=y.ix[train_set].index, columns=unique_cols)
+        if do_all:
+            cols = y.columns
+        else:
+            cols = unique_cols
+        yhat = pd.DataFrame(data=yhat, index=y.ix[train_set].index, columns=cols)
 
-        train_err = get_err(y.ix[train_set], yhat)
+        train_err = get_err(y.ix[train_set], yhat, do_all)
 
         print 'Training error:', np.sqrt(np.mean(train_err.values ** 2))
 
@@ -150,16 +158,21 @@ if __name__ == "__main__":
         yhat = ann.predict(df_train.ix[valid_set].values)
         yhat[yhat < 0] = 0.0
         yhat[yhat > 1] = 1.0
-        yhat = pd.DataFrame(data=yhat, index=y.ix[valid_set].index, columns=unique_cols)
+        yhat = pd.DataFrame(data=yhat, index=y.ix[valid_set].index, columns=cols)
 
-        valid_err = get_err(y.ix[valid_set], yhat)
+        valid_err = get_err(y.ix[valid_set], yhat, do_all)
 
         print 'Validation error:', np.sqrt(np.mean(valid_err.values ** 2))
 
+        valerr.append(np.sqrt(np.mean(valid_err.values ** 2)))
         yfit = ann.predict(df.ix[test_set].values)
-        write_rf_predictions(yfit, test_set, ann_id)
+        yfit[yfit < 0] = 0.0
+        yfit[yfit > 1] = 1.0
+        if do_all:
+            yhat = pd.DataFrame(data=yfit, index=y.ix[valid_set].index, columns=cols)
+        write_rf_predictions(yfit, test_set, ann_id, do_all)
 
-    plt.plot(l2_regs, valerr, lw=2)
+    plt.plot(l1_regs, valerr, lw=2)
     plt.ylabel('Validation Error')
     plt.xlabel('L2 Regularization')
     plt.title(ann_id.split('.pickle'[0]))
