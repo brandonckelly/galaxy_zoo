@@ -27,7 +27,7 @@ verbose = True
 
 climate.enable_default_logging()
 
-do_all = True
+do_all = False
 
 
 def clean_features(df):
