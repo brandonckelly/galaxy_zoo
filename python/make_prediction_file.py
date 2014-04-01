@@ -16,7 +16,7 @@ dct_dir = base_dir + 'data/react/'
 training_dir = base_dir + 'data/images_training_rev1/'
 gbt_dir = base_dir + 'data/gbt/'
 
-do_nnets = True
+do_nnets = False
 do_gbr = True
 
 unique_cols = ['Class1.1', 'Class1.3', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.4',
@@ -280,7 +280,7 @@ if __name__ == "__main__":
     if do_nnets:
         y_predict = ann_predict(df, classes, do_unique=True)
     if do_gbr:
-        g_predict = gbr_predict(df, classes, do_unique=False)
+        g_predict = gbr_predict(df, classes, do_unique=True)
         if do_nnets:
             assert y_predict.shape == g_predict.shape
             y_predict = 0.5 * (y_predict + g_predict)

@@ -28,18 +28,21 @@ train_files = glob.glob(train_dir + '*jpg')
 rpca = cPickle.load(open(base_dir + 'data/DCT_PCA.pickle', 'rb'))
 npcs = 200
 
-questions = range(1, 12)
-lda_list = []
-if verbose:
-    print 'Loading LDA transform for question'
-for question in questions:
+questions = range(1, 2)
+
+
+def get_lda(question):
     if verbose:
+        print 'Loading LDA transform for question'
         print question, '...'
     lda = cPickle.load(open(base_dir + 'data/DCT_LDA_' + str(question) + '.pickle', 'rb'))
-    lda_list.append(lda)
+    return lda
+
+lda_list = map(get_lda, questions)
 
 
 def rerun_pipeline(galaxy_id):
+
     # steps: extract_gal_image, run DCT transform, project onto PCA, project onto LDA, compute gaussian features
     if verbose:
         print 'Rerunning pipeline for', galaxy_id
@@ -130,6 +133,7 @@ if __name__ == "__main__":
     print 'Found', len(out), 'outliers out of', len(df), 'galaxies.'
 
     outliers = df.index[out]
+    outliers = outliers[:7]
     if do_parallel:
         features = pool.map(rerun_pipeline, outliers)
     else:
@@ -137,7 +141,7 @@ if __name__ == "__main__":
 
     lda_names = []
     for c in df.columns:
-        if 'LD' in c:
+        if 'LDA' in c:
             lda_names.append(c)
 
     gauss_labels = ['GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux',
@@ -146,9 +150,12 @@ if __name__ == "__main__":
                     'GaussMahDist_3', 'GaussMajor_3', 'GaussAratio_3', 'GaussFlux_3',
                     'GaussMahDist_4', 'GaussMajor_4', 'GaussAratio_4', 'GaussFlux_4']
 
-    for out, feature in zip(outliers, features):
-        df[pc_names].ix[out] = features[0]
-        df[lda_names].ix[out] = features[1]
-        df[gauss_labels].ix[out] = features[3]
+    print len(features)
 
-    df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+    for i, out in enumerate(outliers):
+        print out, len(features[i]), features[i][0].shape, features[i][1].shape, features[i][2].shape
+        df[pc_names].ix[out] = features[i][0]
+        # df[lda_names].ix[out] = feature[1]
+        df[gauss_labels].ix[out] = features[i][2]
+
+    # df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
