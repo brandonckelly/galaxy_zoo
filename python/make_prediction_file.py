@@ -43,6 +43,8 @@ def write_rf_predictions(y_predict, test_ids, base_name, usefull=False):
         y_predict['Class11.6'] = y_predict['Class4.1'] - y_predict['Class11.1'] - y_predict['Class11.2'] - \
                                  y_predict['Class11.3'] - y_predict['Class11.4'] - y_predict['Class11.5']
 
+    print y_predict.columns
+
     norm = y_predict[['Class1.1', 'Class1.2', 'Class1.3']].sum(axis=1)
     y_predict['Class1.1'] /= norm
     y_predict['Class1.2'] /= norm
