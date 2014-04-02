@@ -35,10 +35,19 @@ def clean_features(df):
 
     df['GalaxyCentDist'].ix[df['GalaxyCentDist'] == -9999] = np.log(0.5)
 
-    # standardize inputs
+    pc_names = []
+    for c in df.columns:
+        if 'PC' in c:
+            pc_names.append(c)
+
+    non_pc = df.columns - pd.Index(pc_names)
+    print 'Standardizing for:'
+    print non_pc
+    # standardize inputs for non-PC variables
     mad = (df - df.median()).abs().median()
     df -= df.median()
-    df /= 1.5 * mad
+    df[non_pc] /= 1.5 * mad[non_pc]
+    df[pc_names] /= 1.5 * mad['PC 1']
 
     return df
 
@@ -47,10 +56,10 @@ def train_ann(X, y, l2_reg, learning_rate=0.01, l1_reg=0.0):
 
     train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y)
 
-    n_hidden = 500
+    n_hidden = 100
     layers = (X.shape[1], n_hidden, y.shape[1])
     experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l2=l2_reg,
-                                     hidden_l1=l1_reg, learning_rate=learning_rate, activation='tanh')
+                                     hidden_l2=l2_reg, learning_rate=learning_rate, activation='tanh')
 
     # experiment.add_dataset('train', (train_set_x, train_set_y))
     # experiment.add_dataset('valid', (valid_set_x, valid_set_y))
@@ -114,8 +123,10 @@ if __name__ == "__main__":
     # train_set = df_train.index
     # print 'Using a training set of', len(train_set), 'and a validation set of', len(valid_set)
 
-    l1reg = 0.00002
-    l2reg = 0.001
+    #l1reg = 0.00002
+    #l2reg = 0.001
+    l2_reg = np.logspace(-4.0, -1.0, 10.0)
+    l1reg = 0.0
     valerr = []
 
     if do_all:
@@ -123,15 +134,13 @@ if __name__ == "__main__":
     else:
         cols = unique_cols
 
-    learning_rates = [0.1, 0.05, 0.01, 0.005, 0.001]
+    for l2reg in l2_reg:
 
-    for learn_rate in learning_rates:
-
-        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_learnrate' + str(learn_rate)
+        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-100_L1-' + str(l1reg) + '_learnrate0p01'
 
         print 'Training the ANN...'
-        ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg, l1_reg=l1reg,
-                        learning_rate=learn_rate)
+        ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg,
+                        learning_rate=0.01)
 
         t2 = time.clock()
 
@@ -162,9 +171,9 @@ if __name__ == "__main__":
 
         valerr.append(np.sqrt(np.mean(valid_err.values ** 2)))
 
-    plt.plot(learning_rates, valerr, lw=2)
+    plt.semilogx(l2_reg, valerr, lw=2)
     plt.ylabel('Validation Error')
-    plt.xlabel('L2 Regularization')
+    plt.xlabel('Learning Rate')
     plt.title(ann_id.split('.pickle'[0]))
     plt.savefig(ann_id.split('.pickle')[0] + '.png')
     plt.show()
