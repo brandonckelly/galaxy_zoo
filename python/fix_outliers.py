@@ -9,7 +9,7 @@ from extract_postage_stamp import extract_gal_image
 import cPickle
 from galaxies_to_dct import do_dct_transform
 import multiprocessing
-
+import matplotlib.pyplot as plt
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -158,4 +158,18 @@ if __name__ == "__main__":
         df[lda_names].ix[out] = features[i][1]
         df[gauss_labels].ix[out] = features[i][2]
 
-    # df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+    df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+
+    X = df[pc_names].values
+    thresh = 6.0
+
+    row_norm = np.linalg.norm(X - np.median(X, axis=0), axis=1)
+    mad = np.median(np.abs(row_norm - np.median(row_norm)))
+    robsig = 1.48 * mad
+    zscore_new = np.abs(row_norm - np.median(row_norm)) / robsig
+
+    plt.plot(zscore, 'r.', ms=2, label='old')
+    plt.plot(zscore_new, 'b.', ms=2, label='new')
+    plt.ylabel('PC z-score')
+    plt.legend(loc='best')
+    plt.show()
