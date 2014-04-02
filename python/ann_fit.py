@@ -33,7 +33,7 @@ def clean_features(df):
     for color in ['blue', 'green', 'red']:
         df[color].ix[df[color] == -9999] = df[color].median()
 
-    df['GalaxyCentDist'].ix[df['GalaxyCentDist'] == -9999] = -0.5
+    df['GalaxyCentDist'].ix[df['GalaxyCentDist'] == -9999] = np.log(0.5)
 
     # standardize inputs
     mad = (df - df.median()).abs().median()
@@ -43,14 +43,14 @@ def clean_features(df):
     return df
 
 
-def train_ann(X, y, l2_reg, l1_reg=0.0):
+def train_ann(X, y, l2_reg, learning_rate=0.01, l1_reg=0.0):
 
     train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y)
 
     n_hidden = 500
     layers = (X.shape[1], n_hidden, y.shape[1])
     experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l2=l2_reg,
-                                     hidden_l1=l1_reg)
+                                     hidden_l1=l1_reg, learning_rate=learning_rate, activation='tanh')
 
     # experiment.add_dataset('train', (train_set_x, train_set_y))
     # experiment.add_dataset('valid', (valid_set_x, valid_set_y))
@@ -96,15 +96,7 @@ if __name__ == "__main__":
     print 'Cleaning the data...'
     df = clean_features(df)
 
-    # remove outliers
-    pc_names = []
-    for c in df.columns:
-        if 'PC' in c:
-            pc_names.append(c)
-
-    X, good_idx = remove_outliers(df.ix[train_set][pc_names].values, thresh=6.0)
-    df_train = df.ix[train_set[good_idx]]
-    y = y.ix[train_set[good_idx]]
+    df_train = df.ix[train_set]
 
     if not np.all(np.isfinite(df.ix[train_set])):
         print 'Error! Non-finite feature values detected in training set.'
@@ -118,8 +110,8 @@ if __name__ == "__main__":
 
     t1 = time.clock()
 
-    # train_set, valid_set = train_test_split(df_train.index)
-    train_set = df_train.index
+    train_set, valid_set = train_test_split(df_train.index)
+    # train_set = df_train.index
     # print 'Using a training set of', len(train_set), 'and a validation set of', len(valid_set)
 
     l1reg = 0.00002
@@ -131,13 +123,15 @@ if __name__ == "__main__":
     else:
         cols = unique_cols
 
-    nstarts = 15
-    for i in range(nstarts):
+    learning_rates = [0.1, 0.05, 0.01, 0.005, 0.001]
 
-        ann_id = 'HF_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_trial' + str(i+1) + '.pickle'
+    for learn_rate in learning_rates:
+
+        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_learnrate' + str(learn_rate)
 
         print 'Training the ANN...'
-        ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg, l1_reg=l1reg)
+        ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg, l1_reg=l1reg,
+                        learning_rate=learn_rate)
 
         t2 = time.clock()
 
@@ -157,27 +151,20 @@ if __name__ == "__main__":
         print 'Training error:', np.sqrt(np.mean(train_err.values ** 2))
 
         # now get validation error
-        # yhat = ann.predict(df_train.ix[valid_set].values)
-        # yhat[yhat < 0] = 0.0
-        # yhat[yhat > 1] = 1.0
-        # yhat = pd.DataFrame(data=yhat, index=y.ix[valid_set].index, columns=cols)
-        #
-        # valid_err = get_err(y.ix[valid_set], yhat, do_all)
-        #
-        # print 'Validation error:', np.sqrt(np.mean(valid_err.values ** 2))
-        #
-        # valerr.append(np.sqrt(np.mean(valid_err.values ** 2)))
+        yhat = ann.predict(df_train.ix[valid_set].values)
+        yhat[yhat < 0] = 0.0
+        yhat[yhat > 1] = 1.0
+        yhat = pd.DataFrame(data=yhat, index=y.ix[valid_set].index, columns=cols)
 
-        yfit = ann.predict(df.ix[test_set].values)
-        yfit[yfit < 0] = 0.0
-        yfit[yfit > 1] = 1.0
-        if do_all:
-            yfit = pd.DataFrame(data=yfit, index=y.ix[test_set].index, columns=cols)
-        write_predictions(yfit, test_set, ann_id, usefull=do_all)
+        valid_err = get_err(y.ix[valid_set], yhat, do_all)
 
-    # plt.plot(l1_regs, valerr, lw=2)
-    # plt.ylabel('Validation Error')
-    # plt.xlabel('L2 Regularization')
-    # plt.title(ann_id.split('.pickle'[0]))
-    # plt.savefig(ann_id.split('.pickle')[0] + '.png')
-    # plt.show()
+        print 'Validation error:', np.sqrt(np.mean(valid_err.values ** 2))
+
+        valerr.append(np.sqrt(np.mean(valid_err.values ** 2)))
+
+    plt.plot(learning_rates, valerr, lw=2)
+    plt.ylabel('Validation Error')
+    plt.xlabel('L2 Regularization')
+    plt.title(ann_id.split('.pickle'[0]))
+    plt.savefig(ann_id.split('.pickle')[0] + '.png')
+    plt.show()

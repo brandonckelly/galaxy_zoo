@@ -124,7 +124,7 @@ if __name__ == "__main__":
     if verbose:
         print 'Finding the outliers...'
     X = df[pc_names].values
-    thresh = 6.0
+    thresh = 5.0
 
     row_norm = np.linalg.norm(X - np.median(X, axis=0), axis=1)
     mad = np.median(np.abs(row_norm - np.median(row_norm)))
@@ -154,9 +154,9 @@ if __name__ == "__main__":
 
     for i, out in enumerate(outliers):
         print i, out, len(features[i]), features[i][0].shape, features[i][1].shape, features[i][2].shape
-        df[pc_names].ix[out] = features[i][0]
-        df[lda_names].ix[out] = features[i][1]
-        df[gauss_labels].ix[out] = features[i][2]
+        df.ix[out, pc_names] = features[i][0]
+        df.ix[out, lda_names] = features[i][1]
+        df.ix[out, gauss_labels] = features[i][2]
 
     df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
 
