@@ -14,7 +14,7 @@ import multiprocessing
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
 test_dir = data_dir + 'images_test_rev1/'
-train_dir = data_dir + 'images_train_rev1/'
+train_dir = data_dir + 'images_training_rev1/'
 dct_dir = data_dir + 'react/'
 ann_dir = data_dir + 'nnets/'
 plot_dir = base_dir + 'plots/'
@@ -28,7 +28,7 @@ train_files = glob.glob(train_dir + '*jpg')
 rpca = cPickle.load(open(base_dir + 'data/DCT_PCA.pickle', 'rb'))
 npcs = 200
 
-questions = range(1, 2)
+questions = range(1, 12)
 
 
 def get_lda(question):
@@ -58,6 +58,7 @@ def rerun_pipeline(galaxy_id):
         file_name = test_name
     else:
         err_msg = 'Cannot find file for', galaxy_id
+        print 'Cannot find file for', galaxy_id
         return
 
     err_msg = extract_gal_image(file_name)
@@ -133,7 +134,6 @@ if __name__ == "__main__":
     print 'Found', len(out), 'outliers out of', len(df), 'galaxies.'
 
     outliers = df.index[out]
-    outliers = outliers[:7]
     if do_parallel:
         features = pool.map(rerun_pipeline, outliers)
     else:
@@ -153,9 +153,9 @@ if __name__ == "__main__":
     print len(features)
 
     for i, out in enumerate(outliers):
-        print out, len(features[i]), features[i][0].shape, features[i][1].shape, features[i][2].shape
+        print i, out, len(features[i]), features[i][0].shape, features[i][1].shape, features[i][2].shape
         df[pc_names].ix[out] = features[i][0]
-        # df[lda_names].ix[out] = feature[1]
+        df[lda_names].ix[out] = features[i][1]
         df[gauss_labels].ix[out] = features[i][2]
 
     # df.to_hdf(base_dir + 'data/galaxy_features.h5', 'df')
