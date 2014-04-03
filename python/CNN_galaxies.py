@@ -38,6 +38,7 @@ from sklearn.cross_validation import train_test_split
 from theano_linreg import LinearRegression
 from ANN import HiddenLayer
 import pandas as pd
+from make_prediction_file import write_predictions
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 data_dir = base_dir + 'data/'
@@ -48,26 +49,19 @@ plot_dir = base_dir + 'plots/'
 do_standardize = False
 
 
-def shared_dataset(data_xy, borrow=True):
-    """ Function that loads the dataset into shared variables
+def clean_features(df):
 
-    The reason we store our dataset in shared variables is to allow
-    Theano to copy it into the GPU memory (when code is run on GPU).
-    Since copying data into the GPU is slow, copying a minibatch everytime
-    is needed (the default behaviour if the data is not in a shared
-    variable) would lead to a large decrease in performance.
-    """
-    data_x, data_y = data_xy
-    shared_x = theano.shared(np.asarray(data_x, dtype=theano.config.floatX), borrow=borrow)
-    shared_y = theano.shared(np.asarray(data_y, dtype=theano.config.floatX), borrow=borrow)
-    # When storing data on the GPU it has to be stored as floats
-    # therefore we will store the labels as ``floatX`` as well
-    # (``shared_y`` does exactly that). But during our computations
-    # we need them as ints (we use labels as index, and if they are
-    # floats it doesn't make sense) therefore instead of returning
-    # ``shared_y`` we will have to cast it to int. This little hack
-    # lets ous get around this issue
-    return shared_x, shared_y
+    for color in ['blue', 'green', 'red']:
+        df[color].ix[df[color] == -9999] = df[color].median()
+
+    df['GalaxyCentDist'].ix[df['GalaxyCentDist'] == -9999] = np.log(0.5)
+
+    # standardize inputs for non-PC variables
+    mad = (df - df.median()).abs().median()
+    df -= df.median()
+    df /= 1.5 * mad
+
+    return df
 
 
 class LeNetConvPoolLayer(object):
@@ -134,7 +128,7 @@ class LeNetConvPoolLayer(object):
         self.params = [self.W, self.b]
 
 
-def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=500):
+def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_size=500):
     """ Demonstrates lenet on MNIST dataset
 
     :type learning_rate: float
@@ -159,8 +153,13 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
 
     print 'Loading data...'
 
+    # load the training data for the features
+    df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
+
     train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train_short.pickle', 'rb'))
     train_id = np.asarray(train_id, dtype=np.int)
+    features = ['blue', 'red', 'green', 'GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux']
+    df = clean_features(df[features])
     ishape = (40, 40)  # this is the size of galaxy images
     images = images.reshape((len(train_id), 3, ishape[0], ishape[1]))
 
@@ -184,12 +183,18 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
     y_df = pd.read_csv(base_dir + 'data/training_solutions_rev1.csv').set_index('GalaxyID')
     y = y_df.ix[train_id].values
 
-    train_set_x, train_set_y = shared_dataset((images[train_idx], y[train_idx]))
-    valid_set_x, valid_set_y = shared_dataset((images[valid_idx], y[valid_idx]))
+    train_set_x = theano.shared(np.asarray(images[train_idx], dtype=theano.config.floatX), borrow=True)
+    ftrain_set_x = theano.shared(np.asarray(df.ix[train_id].values[train_idx], dtype=theano.config.floatX), borrow=True)
+    train_set_y = theano.shared(np.asarray(y[train_idx], dtype=theano.config.floatX), borrow=True)
+    valid_set_x = theano.shared(np.asarray(images[valid_idx], dtype=theano.config.floatX), borrow=True)
+    fvalid_set_x = theano.shared(np.asarray(df.ix[train_id].values[valid_idx], dtype=theano.config.floatX), borrow=True)
+    valid_set_y = theano.shared(np.asarray(y[valid_idx], dtype=theano.config.floatX), borrow=True)
 
     assert np.all(np.isfinite(train_set_x.get_value()))
+    assert np.all(np.isfinite(ftrain_set_x.get_value()))
     assert np.all(np.isfinite(valid_set_x.get_value()))
     assert np.all(np.isfinite(train_set_y.get_value()))
+    assert np.all(np.isfinite(fvalid_set_x.get_value()))
     assert np.all(np.isfinite(valid_set_y.get_value()))
 
     nout = y.shape[1]
@@ -207,6 +212,7 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
     x = T.matrix('x')
+    x_extra = T.matrix('x_extra')
     y = T.matrix('y')  # the outputs are a matrix
 
     ######################
@@ -237,10 +243,10 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
     # the HiddenLayer being fully-connected, it operates on 2D matrices of
     # shape (batch_size,num_pixels) (i.e matrix of rasterized images).
     # This will generate a matrix of shape (20,32*4*4) = (20,512)
-    layer2_input = layer1.output.flatten(2)
+    layer2_input = T.concatenate([layer1.output.flatten(2), x_extra], axis=1)
 
     # construct a fully-connected sigmoidal layer
-    layer2 = HiddenLayer(rng, input=layer2_input, n_in=nkerns[1] * 7 * 7,
+    layer2 = HiddenLayer(rng, input=layer2_input, n_in=nkerns[1] * 7 * 7 + len(df.columns),
                          n_out=500, activation=T.tanh)
 
     # classify the values of the fully-connected sigmoidal layer
@@ -256,6 +262,7 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
 
     validate_model = theano.function([index], layer3.errors(y),
                                      givens={x: valid_set_x[index * batch_size: (index + 1) * batch_size],
+                                             x_extra: fvalid_set_x[index * batch_size: (index + 1) * batch_size],
                                              y: valid_set_y[index * batch_size: (index + 1) * batch_size]})
 
     # create a list of all model parameters to be fit by gradient descent
@@ -275,8 +282,8 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
 
     train_model = theano.function([index], cost, updates=updates,
                                   givens={x: train_set_x[index * batch_size: (index + 1) * batch_size],
+                                          x_extra: ftrain_set_x[index * batch_size: (index + 1) * batch_size],
                                           y: train_set_y[index * batch_size: (index + 1) * batch_size]})
-
 
     ###############
     # TRAIN MODEL #
@@ -373,20 +380,28 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
         n_extra = batch_size - n_train % batch_size
         padded_data = np.zeros((n_extra, 3 * ishape[0] * ishape[1]))
         images_predict = np.append(images, padded_data, axis=0)
+        padded_data = np.zeros((n_extra, len(df.columns)))
+        features_predict = np.append(df.ix[train_id].values, padded_data, axis=0)
     else:
         images_predict = images
 
     n_train_batches = images_predict.shape[0] / batch_size
-    new_data_x, train_set_y = shared_dataset((images_predict, np.zeros((images_predict.shape[0], nout))))
+    new_data_x = theano.shared(np.asarray(images_predict, dtype=theano.config.floatX), borrow=True)
+    fnew_data_x = theano.shared(np.asarray(features_predict, dtype=theano.config.floatX), borrow=True)
     predict = theano.function([index], layer3.y_pred,
-                              givens={x: new_data_x[index * batch_size: (index + 1) * batch_size]})
+                              givens={x: new_data_x[index * batch_size: (index + 1) * batch_size],
+                                      x_extra: fnew_data_x[index * batch_size: (index + 1) * batch_size]})
 
     y_predict = np.vstack([predict(i) for i in xrange(n_train_batches)])
     print y_predict.shape
 
     y_predict = pd.DataFrame(data=y_predict[:n_train], index=train_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
+    y_predict[y_predict < 0] = 0.0
+    y_predict[y_predict > 1] = 1.0
     y_predict.to_csv(data_dir + ann_id + '_predictions_train.csv')
+
+    write_predictions(y_predict, ann_id + '_train')
 
     test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test_short.pickle', 'rb'))
     test_id = np.asarray(test_id, dtype=np.int)
@@ -409,20 +424,28 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=
         n_extra = batch_size - n_test % batch_size
         padded_data = np.zeros((n_extra, 3 * ishape[0] * ishape[1]))
         images_predict = np.append(images, padded_data, axis=0)
+        padded_data = np.zeros((n_extra, len(df.columns)))
+        features_predict = np.append(df.ix[test_id].values, padded_data, axis=0)
     else:
         images_predict = images
 
     n_test_batches = images_predict.shape[0] / batch_size
-    test_data_x, train_set_y = shared_dataset((images_predict, np.zeros((images_predict.shape[0], nout))))
+    test_data_x = theano.shared(np.asarray(images_predict, dtype=theano.config.floatX), borrow=True)
+    ftest_data_x = theano.shared(np.asarray(features_predict, dtype=theano.config.floatX), borrow=True)
     test_predict = theano.function([index], layer3.y_pred,
-                                   givens={x: test_data_x[index * batch_size: (index + 1) * batch_size]})
+                              givens={x: test_data_x[index * batch_size: (index + 1) * batch_size],
+                                      x_extra: ftest_data_x[index * batch_size: (index + 1) * batch_size]})
 
     y_predict = np.vstack([test_predict(i) for i in xrange(n_test_batches)])
     print y_predict.shape
 
     y_predict = pd.DataFrame(data=y_predict[:len(test_id)], index=test_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
+    y_predict[y_predict < 0] = 0.0
+    y_predict[y_predict > 1] = 1.0
     y_predict.to_csv(data_dir + ann_id + '_predictions_test.csv')
+
+    write_predictions(y_predict, ann_id + '_test')
 
 
 if __name__ == '__main__':
