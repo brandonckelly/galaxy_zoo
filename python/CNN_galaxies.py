@@ -46,7 +46,7 @@ dct_dir = data_dir + 'react/'
 ann_dir = data_dir + 'nnets/'
 plot_dir = base_dir + 'plots/'
 
-do_standardize = False
+do_standardize = True
 
 
 def clean_features(df):
@@ -156,7 +156,7 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
     # load the training data for the features
     df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
 
-    train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train_short.pickle', 'rb'))
+    train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train.pickle', 'rb'))
     train_id = np.asarray(train_id, dtype=np.int)
     features = ['blue', 'red', 'green', 'GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux']
     df = clean_features(df[features])
@@ -310,6 +310,7 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
     epoch = 0
     done_looping = False
 
+    eduration = 0.0
     while (epoch < n_epochs) and (not done_looping):
         epoch = epoch + 1
         for minibatch_index in xrange(n_train_batches):
@@ -358,19 +359,26 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
                 done_looping = True
                 break
 
+        epoch_end_time = time.clock()
+        eduration = (epoch_end_time - start_time)
+        avg_duration = eduration / epoch / 60.0  # minutes / epoch
+        time_left = (n_epochs - epoch) * avg_duration / 60.0  # hours left
+        print 'Averaging', avg_duration, 'minutes / epoch. Still have at most', time_left, 'hours left.'
+
     end_time = time.clock()
     print('Optimization complete.')
     print('Best validation score of %f obtained at iteration %i,' % (best_validation_loss, best_iter + 1))
     print ('The code for file ' + os.path.split(__file__)[1] + ' ran for %.2fm' % ((end_time - start_time) / 60.))
 
-    print 'Restoring best values...'
     current_params = [p.get_value(borrow=True) for p in params]
-    for i in xrange(len(params)):
-        params[i].set_value(best_params[i], borrow=True)
 
     print 'Storing values...'
     cPickle.dump(best_params, open(ann_dir + ann_id + '_best_params.pickle', 'wb'))
     cPickle.dump(current_params, open(ann_dir + ann_id + '_last_params.pickle', 'wb'))
+
+    print 'Restoring best values...'
+    for i in xrange(len(params)):
+        params[i].set_value(best_params[i], borrow=True)
 
     print 'Writing predictions...'
     # predict future data
@@ -397,13 +405,9 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
 
     y_predict = pd.DataFrame(data=y_predict[:n_train], index=train_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
-    y_predict[y_predict < 0] = 0.0
-    y_predict[y_predict > 1] = 1.0
     y_predict.to_csv(data_dir + ann_id + '_predictions_train.csv')
 
-    write_predictions(y_predict, ann_id + '_train')
-
-    test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test_short.pickle', 'rb'))
+    test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test.pickle', 'rb'))
     test_id = np.asarray(test_id, dtype=np.int)
     images = images.reshape((len(test_id), 3, ishape[0], ishape[1]))
     # normalize inputs
@@ -441,10 +445,9 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
 
     y_predict = pd.DataFrame(data=y_predict[:len(test_id)], index=test_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
+    y_predict.to_csv(data_dir + ann_id + '_predictions_test.csv')
     y_predict[y_predict < 0] = 0.0
     y_predict[y_predict > 1] = 1.0
-    y_predict.to_csv(data_dir + ann_id + '_predictions_test.csv')
-
     write_predictions(y_predict, ann_id + '_test')
 
 
