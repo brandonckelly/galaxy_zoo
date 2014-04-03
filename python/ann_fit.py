@@ -56,10 +56,10 @@ def train_ann(X, y, l2_reg, learning_rate=0.01, l1_reg=0.0):
 
     train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y)
 
-    n_hidden = 100
+    n_hidden = 500
     layers = (X.shape[1], n_hidden, y.shape[1])
-    experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l2=l2_reg,
-                                     hidden_l2=l2_reg, learning_rate=learning_rate, activation='tanh')
+    experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l1=l2_reg,
+                                     hidden_l1=l2_reg, learning_rate=learning_rate, activation='tanh')
 
     # experiment.add_dataset('train', (train_set_x, train_set_y))
     # experiment.add_dataset('valid', (valid_set_x, valid_set_y))
@@ -125,7 +125,7 @@ if __name__ == "__main__":
 
     #l1reg = 0.00002
     #l2reg = 0.001
-    l2_reg = np.logspace(-4.0, -1.0, 10.0)
+    l2_reg = np.logspace(-6.0, -2.0, 10.0)
     l1reg = 0.0
     valerr = []
 
@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
     for l2reg in l2_reg:
 
-        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-100_L1-' + str(l1reg) + '_learnrate0p01'
+        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_learnrate0p01'
 
         print 'Training the ANN...'
         ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg,
@@ -173,7 +173,7 @@ if __name__ == "__main__":
 
     plt.semilogx(l2_reg, valerr, lw=2)
     plt.ylabel('Validation Error')
-    plt.xlabel('Learning Rate')
+    plt.xlabel('L1 Penalty')
     plt.title(ann_id.split('.pickle'[0]))
     plt.savefig(ann_id.split('.pickle')[0] + '.png')
     plt.show()

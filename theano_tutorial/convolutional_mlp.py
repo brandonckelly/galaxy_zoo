@@ -213,9 +213,8 @@ def evaluate_lenet5(learning_rate=0.1, n_epochs=200,
         updates.append((param_i, param_i - learning_rate * grad_i))
 
     train_model = theano.function([index], cost, updates=updates,
-          givens={
-            x: train_set_x[index * batch_size: (index + 1) * batch_size],
-            y: train_set_y[index * batch_size: (index + 1) * batch_size]})
+                                  givens={x: train_set_x[index * batch_size: (index + 1) * batch_size],
+                                          y: train_set_y[index * batch_size: (index + 1) * batch_size]})
 
     ###############
     # TRAIN MODEL #

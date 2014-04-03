@@ -13,7 +13,7 @@ dct_dir = base_dir + 'data/react/'
 test_dir = base_dir + 'data/images_test_rev1/'
 train_dir = base_dir + 'data/images_training_rev1/'
 
-doshow = True
+doshow = False
 verbose = True
 do_build = True
 
@@ -50,8 +50,8 @@ if len(galaxy_ids_ref - galaxy_ids) != 0:
 
 del galaxy_ids, galaxy_ids_ref
 
-test_ids = list(test_ids)[:10]
-train_ids = list(train_ids)[:10]
+test_ids = list(test_ids)
+train_ids = list(train_ids)
 
 
 # load the DCT coefficients
@@ -104,7 +104,10 @@ for i in xrange(len(train_ids)):
     train_images[i, 1, :, :] = np.dot(U[:, :ncoefs], dct_train[i, ncoefs:2*ncoefs]).reshape(shape)
     train_images[i, 2, :, :] = np.dot(U[:, :ncoefs], dct_train[i, 2*ncoefs:]).reshape(shape)
 
+train_images = train_images.reshape((len(train_ids), 3 * shape[0] * shape[1]))
+
 if doshow:
+    train_images = train_images.reshape((len(train_ids), 3, shape[0], shape[1]))
     plt.subplot(321)
     plt.imshow(train_images[0, 0, :, :], cmap='hot')
     plt.title('Recon 1')
@@ -128,6 +131,7 @@ if doshow:
     plt.title('Orig 3')
     plt.tight_layout()
     plt.show()
+    train_images = train_images.reshape((len(train_ids), 3 * shape[0] * shape[1]))
 
 del dct_train
 
@@ -145,7 +149,10 @@ for i in xrange(len(test_ids)):
     test_images[i, 1, :, :] = np.dot(U[:, :ncoefs], dct_test[i, ncoefs:2*ncoefs]).reshape(shape)
     test_images[i, 2, :, :] = np.dot(U[:, :ncoefs], dct_test[i, 2*ncoefs:]).reshape(shape)
 
+test_images = test_images.reshape((len(test_ids), 3 * shape[0] * shape[1]))
+
 if doshow:
+    test_images = test_images.reshape((len(test_ids), 3, shape[0], shape[1]))
     plt.subplot(321)
     plt.imshow(test_images[0, 0, :, :], cmap='hot')
     plt.title('Recon 1')
@@ -168,6 +175,7 @@ if doshow:
     plt.imshow(image, cmap='hot')
     plt.title('Orig 3')
     plt.show()
+    test_images = test_images.reshape((len(test_ids), 3 * shape[0] * shape[1]))
 
 print 'Pickling the test images...'
 cPickle.dump((test_ids, test_images), open(base_dir + 'data/DCT_Images_test.pickle', 'wb'))
