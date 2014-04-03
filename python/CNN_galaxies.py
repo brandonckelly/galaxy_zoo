@@ -118,8 +118,7 @@ class LeNetConvPoolLayer(object):
         self.b = theano.shared(value=b_values, borrow=True)
 
         # convolve input feature maps with filters
-        conv_out = conv.conv2d(input=input, filters=self.W,
-                filter_shape=filter_shape, image_shape=image_shape)
+        conv_out = conv.conv2d(input=input, filters=self.W, filter_shape=filter_shape, image_shape=image_shape)
 
         # downsample each feature map individually, using maxpooling
         pooled_out = downsample.max_pool_2d(input=conv_out,
@@ -135,7 +134,7 @@ class LeNetConvPoolLayer(object):
         self.params = [self.W, self.b]
 
 
-def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=150):
+def evaluate_lenet5(learning_rate=0.1, n_epochs=50, nkerns=[20, 50], batch_size=500):
     """ Demonstrates lenet on MNIST dataset
 
     :type learning_rate: float
@@ -160,7 +159,10 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
 
     print 'Loading data...'
 
-    train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train.pickle', 'rb'))
+    train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train_short.pickle', 'rb'))
+    train_id = np.asarray(train_id, dtype=np.int)
+    ishape = (40, 40)  # this is the size of galaxy images
+    images = images.reshape((len(train_id), 3, ishape[0], ishape[1]))
 
     # normalize inputs
     if do_standardize:
@@ -173,6 +175,8 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
         images *= 2.0  # in range [-1.0, 1.0]
         print 'Image Range: ', images.min(), images.max()
 
+    images = images.reshape((len(train_id), 3 * ishape[0] * ishape[1]))
+
     idx = np.arange(images.shape[0])
 
     train_idx, valid_idx = train_test_split(idx)
@@ -182,6 +186,11 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
 
     train_set_x, train_set_y = shared_dataset((images[train_idx], y[train_idx]))
     valid_set_x, valid_set_y = shared_dataset((images[valid_idx], y[valid_idx]))
+
+    assert np.all(np.isfinite(train_set_x.get_value()))
+    assert np.all(np.isfinite(valid_set_x.get_value()))
+    assert np.all(np.isfinite(train_set_y.get_value()))
+    assert np.all(np.isfinite(valid_set_y.get_value()))
 
     nout = y.shape[1]
 
@@ -197,11 +206,8 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
 
     # allocate symbolic variables for the data
     index = T.lscalar()  # index to a [mini]batch
-    x = T.matrix('x')   # the data is presented as rasterized images
-    y = T.matrix('y')  # the labels are presented as 1D vector of
-                        # [int] labels
-
-    ishape = (40, 40)  # this is the size of MNIST images
+    x = T.matrix('x')
+    y = T.matrix('y')  # the outputs are a matrix
 
     ######################
     # BUILD ACTUAL MODEL #
@@ -210,7 +216,9 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
 
     # Reshape matrix of rasterized images of shape (batch_size,28*28)
     # to a 4D tensor, compatible with our LeNetConvPoolLayer
-    layer0_input = x.reshape((batch_size, 3, ishape[0], ishape[1]))
+    # layer0_input = x.reshape((batch_size, 3, ishape[0], ishape[1]))
+
+    layer0_input = x.reshape((batch_size, 3, 40, 40))
 
     # Construct the first convolutional pooling layer:
     # filtering reduces the image size to (40-5+1,40-5+1)=(36,36)
@@ -289,7 +297,7 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
     best_params = None
     best_validation_loss = np.inf
     best_iter = 0
-    test_score = 0.
+    # test_score = 0.
     start_time = time.clock()
 
     epoch = 0
@@ -325,6 +333,11 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
                     # save best validation score and iteration number
                     best_validation_loss = this_validation_loss
                     best_iter = iter
+                    best_params = [p.get_value(borrow=False) for p in params]
+
+                    if epoch > 100:
+                        print 'Storing values...'
+                        cPickle.dump(best_params, open(ann_dir + ann_id + '_best_params.pickle', 'wb'))
 
                     # test it on the test set
                     # test_losses = [test_model(i) for i in xrange(n_test_batches)]
@@ -343,24 +356,41 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
     print('Best validation score of %f obtained at iteration %i,' % (best_validation_loss, best_iter + 1))
     print ('The code for file ' + os.path.split(__file__)[1] + ' ran for %.2fm' % ((end_time - start_time) / 60.))
 
+    print 'Restoring best values...'
+    current_params = [p.get_value(borrow=True) for p in params]
+    for i in xrange(len(params)):
+        params[i].set_value(best_params[i], borrow=True)
+
+    print 'Storing values...'
+    cPickle.dump(best_params, open(ann_dir + ann_id + '_best_params.pickle', 'wb'))
+    cPickle.dump(current_params, open(ann_dir + ann_id + '_last_params.pickle', 'wb'))
+
     print 'Writing predictions...'
-
     # predict future data
-    train_set_x, train_set_y = shared_dataset((images, y_df.ix[train_id]))
-    train_predict = theano.function([index], layer3.y_pred,
-                                    givens={x: train_set_x[index * batch_size: (index + 1) * batch_size]})
+    n_train = len(train_id)
+    if n_train % batch_size > 0:
+        # need to pad the array to be a multiple of batchsize
+        n_extra = batch_size - n_train % batch_size
+        padded_data = np.zeros((n_extra, 3 * ishape[0] * ishape[1]))
+        images_predict = np.append(images, padded_data, axis=0)
+    else:
+        images_predict = images
 
-    n_train_batches = train_set_x.get_value(borrow=True).shape[0]
-    n_train_batches /= batch_size
-    y_predict = np.vstack([train_predict(i) for i in xrange(n_train_batches+1)])
+    n_train_batches = images_predict.shape[0] / batch_size
+    new_data_x, train_set_y = shared_dataset((images_predict, np.zeros((images_predict.shape[0], nout))))
+    predict = theano.function([index], layer3.y_pred,
+                              givens={x: new_data_x[index * batch_size: (index + 1) * batch_size]})
+
+    y_predict = np.vstack([predict(i) for i in xrange(n_train_batches)])
     print y_predict.shape
 
-    y_predict = pd.DataFrame(data=y_predict, index=train_id, columns=y_df.columns)
+    y_predict = pd.DataFrame(data=y_predict[:n_train], index=train_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
     y_predict.to_csv(data_dir + ann_id + '_predictions_train.csv')
 
-    test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test.pickle', 'rb'))
-
+    test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test_short.pickle', 'rb'))
+    test_id = np.asarray(test_id, dtype=np.int)
+    images = images.reshape((len(test_id), 3, ishape[0], ishape[1]))
     # normalize inputs
     if do_standardize:
         images -= images.mean(axis=0)
@@ -370,24 +400,30 @@ def evaluate_lenet5(learning_rate=0.0, n_epochs=2, nkerns=[20, 50], batch_size=1
         images /= images.max(axis=0)  # in range [0,1]
         images -= 0.5  # in range [-0.5, 0.5]
         images *= 2.0  # in range [-1.0, 1.0]
+    images = images.reshape((len(test_id), 3 * ishape[0] * ishape[1]))
 
-    garbage = np.random.uniform(0.0, 1.0, (len(test_id), nout))
-    test_set_x, test_set_y = shared_dataset((images, garbage))
+    # predict future data
+    n_test = len(test_id)
+    if n_test % batch_size > 0:
+        # need to pad the array to be a multiple of batchsize
+        n_extra = batch_size - n_test % batch_size
+        padded_data = np.zeros((n_extra, 3 * ishape[0] * ishape[1]))
+        images_predict = np.append(images, padded_data, axis=0)
+    else:
+        images_predict = images
+
+    n_test_batches = images_predict.shape[0] / batch_size
+    test_data_x, train_set_y = shared_dataset((images_predict, np.zeros((images_predict.shape[0], nout))))
     test_predict = theano.function([index], layer3.y_pred,
-                                   givens={x: test_set_x[index * batch_size: (index + 1) * batch_size]})
-    n_test_batches = test_set_x.get_value(borrow=True).shape[0]
-    n_test_batches /= batch_size
-    y_predict = np.vstack([test_predict(i) for i in xrange(n_test_batches+1)])
+                                   givens={x: test_data_x[index * batch_size: (index + 1) * batch_size]})
+
+    y_predict = np.vstack([test_predict(i) for i in xrange(n_test_batches)])
     print y_predict.shape
 
-    y_predict = pd.DataFrame(data=y_predict, index=test_id, columns=y_df.columns)
+    y_predict = pd.DataFrame(data=y_predict[:len(test_id)], index=test_id, columns=y_df.columns)
     y_predict.index.name = 'GalaxyID'
     y_predict.to_csv(data_dir + ann_id + '_predictions_test.csv')
 
 
 if __name__ == '__main__':
     evaluate_lenet5()
-
-
-def experiment(state, channel):
-    evaluate_lenet5(state.learning_rate, dataset=state.dataset)
