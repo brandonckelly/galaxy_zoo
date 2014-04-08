@@ -7,7 +7,7 @@ import cPickle
 import glob
 import sys
 import theanets
-from theano.tensor import tanh
+import theano.tensor as T
 
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
@@ -16,7 +16,7 @@ dct_dir = base_dir + 'data/react/'
 training_dir = base_dir + 'data/images_training_rev1/'
 gbt_dir = base_dir + 'data/gbt/'
 
-do_nnets = False
+do_nnets = True
 do_gbr = True
 
 unique_cols = ['Class1.1', 'Class1.3', 'Class2.1', 'Class3.1', 'Class4.1', 'Class5.1', 'Class5.2', 'Class5.4',
@@ -192,13 +192,17 @@ def ann_predict(df, classes, do_unique=True):
 
     df_clean = clean_features(df.copy())
 
-    ann_files = ['ANN_HF_L2-0.001_arch-500_L1-2e-05_trial1.pickle', 'ANN_HF_L2-0.001_arch-500_L1-2e-05_trial2.pickle',
-                 'ANN_HF_L2-0.001_arch-500_L1-2e-05_trial3.pickle', 'ANN_HF_L2-0.001_arch-500_L1-2e-05_trial4.pickle',
-                 'ANN_HF_L2-0.001_arch-500_L1-2e-05_trial5.pickle']
+    ann_files = ['ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial11.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial22.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial12.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial31.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial21.pickle',
+                 'ANN_SGD_L2-0.0_arch-1000-1000-1000_L1-0.0_learnrate0p01_trial32.pickle']
 
     ann_prediction = 0.0
     for f in ann_files:
-        ann = theanets.Network((df.shape[1]-16, 500, len(cols)), tanh)
+        ann = theanets.Network((df.shape[1]-16, 1000, 1000, 1000, len(cols)), lambda z: T.maximum(0, z))
         print f
         ann.load(base_dir + 'data/nnets/' + f)
         ann_prediction += ann.predict(df_clean[df_clean.columns[:-16]].values) / len(ann_files)
@@ -278,9 +282,9 @@ if __name__ == "__main__":
     print 'Predicting the values...'
 
     if do_nnets:
-        y_predict = ann_predict(df, classes, do_unique=True)
+        y_predict = ann_predict(df, classes, do_unique=False)
     if do_gbr:
-        g_predict = gbr_predict(df, classes, do_unique=True)
+        g_predict = gbr_predict(df, classes, do_unique=False)
         if do_nnets:
             assert y_predict.shape == g_predict.shape
             y_predict = 0.5 * (y_predict + g_predict)

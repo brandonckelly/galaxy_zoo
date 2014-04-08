@@ -122,13 +122,13 @@ class LeNetConvPoolLayer(object):
         # reshape it to a tensor of shape (1,n_filters,1,1). Each bias will
         # thus be broadcasted across mini-batches and feature map
         # width & height
-        self.output = T.tanh(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'))
+        self.output = T.maximum(pooled_out + self.b.dimshuffle('x', 0, 'x', 'x'), 0)
 
         # store parameters of this layer
         self.params = [self.W, self.b]
 
 
-def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_size=500):
+def evaluate_lenet5(learning_rate=0.01, n_epochs=65, nkerns=[10, 25], batch_size=500):
     """ Demonstrates lenet on MNIST dataset
 
     :type learning_rate: float
@@ -170,8 +170,8 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
     else:
         images -= images.min(axis=0)
         images /= images.max(axis=0)  # in range [0,1]
-        images -= 0.5  # in range [-0.5, 0.5]
-        images *= 2.0  # in range [-1.0, 1.0]
+        #images -= 0.5  # in range [-0.5, 0.5]
+        #images *= 2.0  # in range [-1.0, 1.0]
         print 'Image Range: ', images.min(), images.max()
 
     images = images.reshape((len(train_id), 3 * ishape[0] * ishape[1]))
@@ -247,7 +247,7 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
 
     # construct a fully-connected sigmoidal layer
     layer2 = HiddenLayer(rng, input=layer2_input, n_in=nkerns[1] * 7 * 7 + len(df.columns),
-                         n_out=500, activation=T.tanh)
+                         n_out=500)
 
     # classify the values of the fully-connected sigmoidal layer
     layer3 = LinearRegression(input=layer2.output, n_in=500, n_out=nout)
@@ -417,8 +417,8 @@ def evaluate_lenet5(learning_rate=0.01, n_epochs=100, nkerns=[20, 50], batch_siz
     else:
         images -= images.min(axis=0)
         images /= images.max(axis=0)  # in range [0,1]
-        images -= 0.5  # in range [-0.5, 0.5]
-        images *= 2.0  # in range [-1.0, 1.0]
+ #       images -= 0.5  # in range [-0.5, 0.5]
+ #       images *= 2.0  # in range [-1.0, 1.0]
     images = images.reshape((len(test_id), 3 * ishape[0] * ishape[1]))
 
     # predict future data

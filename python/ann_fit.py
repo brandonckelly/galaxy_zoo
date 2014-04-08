@@ -25,7 +25,7 @@ verbose = True
 
 climate.enable_default_logging()
 
-do_all = False
+do_all = True
 
 
 def clean_features(df):
@@ -40,14 +40,10 @@ def clean_features(df):
         if 'PC' in c:
             pc_names.append(c)
 
-    non_pc = df.columns - pd.Index(pc_names)
-    print 'Standardizing for:'
-    print non_pc
     # standardize inputs for non-PC variables
     mad = (df - df.median()).abs().median()
     df -= df.median()
-    df[non_pc] /= 1.5 * mad[non_pc]
-    df[pc_names] /= 1.5 * mad['PC 1']
+    df /= 1.5 * mad
 
     return df
 
@@ -56,10 +52,11 @@ def train_ann(X, y, l2_reg, learning_rate=0.01, l1_reg=0.0):
 
     train_set_x, valid_set_x, train_set_y, valid_set_y = train_test_split(X, y)
 
-    n_hidden = 500
-    layers = (X.shape[1], n_hidden, y.shape[1])
-    experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=100, weight_l1=l2_reg,
-                                     hidden_l1=l2_reg, learning_rate=learning_rate, activation='tanh')
+    n_hidden = 1000
+    layers = (X.shape[1], n_hidden, n_hidden, n_hidden, y.shape[1])
+    experiment = theanets.Experiment(theanets.Regressor, layers=layers, train_batches=200, weight_l2=l2_reg,
+                                     hidden_l2=l2_reg, learning_rate=learning_rate, activation='relu',
+                                     num_updates=750, momentum=0.9, hidden_dropouts=0.1)
 
     # experiment.add_dataset('train', (train_set_x, train_set_y))
     # experiment.add_dataset('valid', (valid_set_x, valid_set_y))
@@ -126,6 +123,8 @@ if __name__ == "__main__":
     #l1reg = 0.00002
     #l2reg = 0.001
     l2_reg = np.logspace(-6.0, -2.0, 10.0)
+    l2_reg = [0.0]
+    l2reg = 0.0
     l1reg = 0.0
     valerr = []
 
@@ -134,9 +133,9 @@ if __name__ == "__main__":
     else:
         cols = unique_cols
 
-    for l2reg in l2_reg:
+    for i in [1]:
 
-        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-500_L1-' + str(l1reg) + '_learnrate0p01'
+        ann_id = 'SGD_L2-' + str(l2reg) + '_arch-1000-1000-1000_L1-' + str(l1reg) + '_learnrate0p01_dropout'
 
         print 'Training the ANN...'
         ann = train_ann(df_train.ix[train_set].values, y[cols].ix[train_set].values, l2reg,
@@ -171,9 +170,9 @@ if __name__ == "__main__":
 
         valerr.append(np.sqrt(np.mean(valid_err.values ** 2)))
 
-    plt.semilogx(l2_reg, valerr, lw=2)
-    plt.ylabel('Validation Error')
-    plt.xlabel('L1 Penalty')
-    plt.title(ann_id.split('.pickle'[0]))
-    plt.savefig(ann_id.split('.pickle')[0] + '.png')
-    plt.show()
+    # plt.semilogx(l2_reg, valerr, lw=2)
+    # plt.ylabel('Validation Error')
+    # plt.xlabel('L1 Penalty')
+    # plt.title(ann_id.split('.pickle'[0]))
+    # plt.savefig(ann_id.split('.pickle')[0] + '.png')
+    # plt.show()

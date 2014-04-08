@@ -41,8 +41,7 @@ from sklearn.cross_validation import train_test_split
 
 
 class HiddenLayer(object):
-    def __init__(self, rng, input, n_in, n_out, W=None, b=None,
-                 activation=T.tanh):
+    def __init__(self, rng, input, n_in, n_out, W=None, b=None):
         """
         Typical hidden layer of a MLP: units are fully-connected and have
         sigmoidal activation function. Weight matrix W is of shape (n_in,n_out)
@@ -86,8 +85,8 @@ class HiddenLayer(object):
             W_values = numpy.asarray(rng.uniform(low=-numpy.sqrt(6. / (n_in + n_out)),
                                                  high=numpy.sqrt(6. / (n_in + n_out)),
                                                  size=(n_in, n_out)), dtype=theano.config.floatX)
-            if activation == theano.tensor.nnet.sigmoid:
-                W_values *= 4
+            # if activation == theano.tensor.nnet.sigmoid:
+            #    W_values *= 4
 
             W = theano.shared(value=W_values, name='W', borrow=True)
 
@@ -98,8 +97,9 @@ class HiddenLayer(object):
         self.W = W
         self.b = b
         lin_output = T.dot(input, self.W) + self.b
-        self.output = (lin_output if activation is None
-                       else activation(lin_output))
+        self.output = T.maximum(lin_output, 0)
+        # self.output = (lin_output if activation is None
+        #               else activation(lin_output))
         # parameters of the model
         self.params = [self.W, self.b]
 

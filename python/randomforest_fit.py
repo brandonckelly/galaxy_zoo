@@ -20,7 +20,7 @@ njobs = 7
 do_extratrees = False
 
 
-def get_err(y, yfit, usefull=False):
+def get_err(y, yfit, usefull=True):
     yfit[yfit > 1] = 1.0
     yfit[yfit < 0] = 0.0
 
@@ -158,7 +158,7 @@ def get_err(y, yfit, usefull=False):
     return err
 
 
-def train_rf(df, y, ntrees=None, msplit=None):
+def train_rf(X, y, ntrees=None, msplit=None):
 
     # Random Forest predictions Correspond to these values. Need to calculate the values for the remaining
     # classes using the summation constraints.
@@ -167,6 +167,7 @@ def train_rf(df, y, ntrees=None, msplit=None):
                    'Class8.7', 'Class9.2', 'Class9.3', 'Class10.2', 'Class10.3', 'Class11.1', 'Class11.2',
                    'Class11.3', 'Class11.4', 'Class11.5']
 
+    unique_cols = y.columns
     y_unique = y[unique_cols]
 
     if do_extratrees:
@@ -263,30 +264,31 @@ def train_rf(df, y, ntrees=None, msplit=None):
             best_rf = ExtraTreesRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
                                           n_jobs=njobs, bootstrap=True)
         else:
-            best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=verbose,
+            best_rf = RandomForestRegressor(max_features=msplit, oob_score=True, n_estimators=ntrees, verbose=2,
                                             n_jobs=njobs)
-        best_rf.fit(df.values, y_unique)
+        best_rf.fit(X, y_unique)
         yhat_oob = pd.DataFrame(data=best_rf.oob_prediction_, index=y.index, columns=unique_cols)
         yhat_oob[yhat_oob > 1] = 1.0
         yhat_oob[yhat_oob < 0] = 0.0
-        best_err = get_err(y, yhat_oob).values
+        best_err = get_err(y, yhat_oob, usefull=True).values
+        print 'OOB Error is', np.sqrt(np.mean(best_err ** 2))
         if verbose:
             print 'Pickling best RF object...'
         cPickle.dump(best_rf, open(data_dir + reg_str + '_regressor.pickle', 'wb'))
 
-    # make feature importance plot
-    fimp = best_rf.feature_importances_
-    fimp /= fimp.max()
-    sidx = np.argsort(fimp)
-    feature_labels = np.array(df.columns)
-    pos = np.arange(50) + 0.5
-    plt.clf()
-    plt.barh(pos, fimp[sidx[-50:]], align='center')
-    plt.yticks(pos, feature_labels[sidx[-50:]])
-    plt.xlabel("Relative Importance: Top 50")
-    plt.savefig(plot_dir + 'feature_importance_' + reg_str + '.png')
-    if doshow:
-        plt.show()
+    # # make feature importance plot
+    # fimp = best_rf.feature_importances_
+    # fimp /= fimp.max()
+    # sidx = np.argsort(fimp)
+    # feature_labels = np.array(df.columns)
+    # pos = np.arange(50) + 0.5
+    # plt.clf()
+    # plt.barh(pos, fimp[sidx[-50:]], align='center')
+    # plt.yticks(pos, feature_labels[sidx[-50:]])
+    # plt.xlabel("Relative Importance: Top 50")
+    # plt.savefig(plot_dir + 'feature_importance_' + reg_str + '.png')
+    # if doshow:
+    #     plt.show()
 
     # plot histogram of the errors
     rmse_by_galaxy = np.sqrt(np.mean(best_err ** 2, axis=1))
@@ -296,15 +298,15 @@ def train_rf(df, y, ntrees=None, msplit=None):
     if doshow:
         plt.show()
 
-    # plot errors vs. PCA norm
-    pc_cols = [c for c in df.columns if 'PC' in c]
-    pca_norm = np.linalg.norm(df[pc_cols], axis=1)
-    plt.loglog(pca_norm, rmse_by_galaxy, '.')
-    plt.xlabel('PC Norm')
-    plt.ylabel('OOB RMSE')
-    plt.savefig(plot_dir + 'OOB_RMSE_vs_PC_Norm_' + reg_str + '.png')
-    if doshow:
-        plt.show()
+    # # plot errors vs. PCA norm
+    # pc_cols = [c for c in df.columns if 'PC' in c]
+    # pca_norm = np.linalg.norm(df[pc_cols], axis=1)
+    # plt.loglog(pca_norm, rmse_by_galaxy, '.')
+    # plt.xlabel('PC Norm')
+    # plt.ylabel('OOB RMSE')
+    # plt.savefig(plot_dir + 'OOB_RMSE_vs_PC_Norm_' + reg_str + '.png')
+    # if doshow:
+    #     plt.show()
 
     return best_rf
 
@@ -322,9 +324,18 @@ if __name__ == "__main__":
     print 'Found', len(y), 'galaxies with training labels.'
 
     # load the training data for the features
+    train_id, images = cPickle.load(open(data_dir + 'DCT_Images_train.pickle', 'rb'))
+    train_id = np.asarray(train_id, dtype=np.int)
+    gauss_labels = ['GalaxyCentDist', 'GalaxyMajor', 'GalaxyAratio', 'GalaxyFlux',
+                    'GaussMahDist_1', 'GaussMajor_1', 'GaussAratio_1', 'GaussFlux_1',
+                    'GaussMahDist_2', 'GaussMajor_2', 'GaussAratio_2', 'GaussFlux_2',
+                    'GaussMahDist_3', 'GaussMajor_3', 'GaussAratio_3', 'GaussFlux_3',
+                    'GaussMahDist_4', 'GaussMajor_4', 'GaussAratio_4', 'GaussFlux_4']
     df = pd.read_hdf(base_dir + 'data/galaxy_features.h5', 'df')
-    if len(y.index - df.index) > 0:
-        print 'Error! Missing training data in feature dataframe.'
+    df = df[gauss_labels]
+    y = y.ix[train_id]
+    if (len(y.index - df.index) > 0) or (len(y.index - pd.Index(train_id)) > 0):
+        print 'Error! Missing training data.'
         exit()
 
     files = glob.glob(base_dir + 'data/images_test_rev1/*.jpg')
@@ -334,14 +345,24 @@ if __name__ == "__main__":
 
     print 'Found', len(test_set), 'galaxies with test labels.'
 
-    train_set = y.index
-
-    if not np.all(np.isfinite(df.ix[train_set])):
+    if not np.all(np.isfinite(df.ix[train_id])):
         print 'Error! Non-finite feature values detected in training set.'
     if not np.all(np.isfinite(df.ix[test_set])):
         print 'Error! Non-finite feature values detected in test set.'
 
-    rf = train_rf(df.ix[train_set], y)
+    X_train = np.hstack((images, df.ix[train_id].values))
 
-    yfit = rf.predict(df.ix[test_set])
-    write_predictions(yfit, test_set)
+    rf = train_rf(X_train, y, ntrees=300, msplit=100)
+
+    # load test data
+    test_id, images = cPickle.load(open(data_dir + 'DCT_Images_test.pickle', 'rb'))
+    test_id = np.asarray(test_id, dtype=np.int)
+
+    X_test = np.hstack((images, df.ix[test_id].values))
+    y_predict = rf.predict(X_test)
+    y_predict = pd.DataFrame(data=y_predict, index=test_id, columns=y.columns)
+    y_predict.index.name = 'GalaxyID'
+    y_predict[y_predict < 0] = 0.0
+    y_predict[y_predict > 1] = 1.0
+
+    write_predictions(y_predict, 'RF_ReconImages')
