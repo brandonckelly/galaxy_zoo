@@ -12,12 +12,12 @@ class REACT(object):
         try:
             basis.lower() in ['dct', 'manual']
         except ValueError:
-            print 'Input basis must be either DCT or manual.'
+            'Input basis must be either DCT or manual.'
 
         try:
             method.lower() in ['monotone', 'nss']
         except ValueError:
-            print 'method must be either monotone or nss.'
+            'method must be either monotone or nss.'
 
         self.basis = basis
         self.nfreq = 1
@@ -49,7 +49,7 @@ class REACT(object):
         try:
             n_components <= len(y)
         except ValueError:
-            print 'Number of components must be less than the length of y.'
+            'Number of components must be less than the length of y.'
 
         self.coefs = np.dot(X.T, y)
 
@@ -88,7 +88,7 @@ class REACT(object):
         try:
             self.method.lower() == 'dct'
         except AttributeError:
-            print 'Interpolation only available for DCT basis.'
+            'Interpolation only available for DCT basis.'
 
         n = self.nfreq
         p = self.ncomp
@@ -168,7 +168,7 @@ class REACT2D(REACT):
         try:
             self.n_components <= min(y.shape)
         except ValueError:
-            print 'Number of components must be less than the length of y.'
+            'Number of components must be less than the length of y.'
 
         # build the 2-D DCT here and then feed into REACT.fit()
         X = self.build_dct(y.shape[0], y.shape[1], self.n_components)

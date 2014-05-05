@@ -3,15 +3,15 @@ __author__ = 'brandonkelly'
 import numpy as np
 from PIL import Image
 import matplotlib.pyplot as plt
+from matplotlib.path import Path
 import os
 import glob
-from skimage.feature import peak_local_max
+from skimage.measure import find_contours
 from scipy.ndimage.interpolation import rotate
 from scipy.ndimage import median_filter
 import pandas as pd
 from scipy import optimize
 import datetime
-from scipy import linalg
 import multiprocessing
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
@@ -21,30 +21,62 @@ test_dir = data_dir + 'images_test_rev1/'
 plot_dir = base_dir + 'plots/'
 
 doshow = False
-file_dir = test_dir
 do_parallel = True
+debug = False
 
 
-# Define a function to make the ellipses
-def ellipse(ra, rb, ang, x0, y0, Nb=100):
-    xpos, ypos = x0, y0
-    radm, radn = ra, rb
-    an = ang
-    co, si = np.cos(an), np.sin(an)
-    the = np.linspace(0, 2 * np.pi, Nb)
-    X = radm * np.cos(the) * co - si * radn * np.sin(the) + xpos
-    Y = radm * np.cos(the) * si + co * radn * np.sin(the) + ypos
-    return X, Y
+def extract_galaxy(image, flux_sigma, gcontour=None, zero_outside=True):
+    if gcontour is None:
+        # find the contour defining the boundary of the galaxy
+        cpoint = np.array((image.shape[1], image.shape[0])) / 2
+        floor = np.median(image)
+        threshold = np.max([2.0 * flux_sigma, floor + 0.075 * (image[cpoint[0], cpoint[1]] - floor)])
+        contour = find_contours(image, threshold)
+        gcount = 0
+        for c in contour:
+            # find the contour that contains the central pixel: points interior to this belong to the galaxy
+            this_path = Path(c, closed=True)
+            if this_path.contains_point(cpoint):
+                gcontour = this_path
+                gcount += 1
 
+    if debug:
+        plt.clf()
+        plt.imshow(image, cmap='hot')
+        plt.plot(gcontour.vertices[:, 1], gcontour.vertices[:, 0], 'b')
+        plt.show()
 
-def arctanh(x):
-    z = 0.5 * np.log((1.0 + x) / (1.0 - x))
-    return z
+    if gcontour is None:
+        # could not find the galaxy
+        return None, gcontour
+    else:
+        # return the flux along the border of the galaxy, since we will use this to add noise later
+        border = image[gcontour.vertices[:, 0].astype(int), gcontour.vertices[:, 1].astype(int)]
+        # crop the image
+        # note image is indexed (row, column) = (y, x), so gcontour.vertices[:, 0] = set of row values for the contour
+        rmin, rmax = np.floor(gcontour.vertices[:, 0].min()), np.ceil(gcontour.vertices[:, 0].max())
+        cmin, cmax = np.floor(gcontour.vertices[:, 1].min()), np.ceil(gcontour.vertices[:, 1].max())
+        cropped = image[int(rmin):int(rmax), int(cmin):int(cmax)]
+        cropped_contour = gcontour.deepcopy()
+        cropped_contour.vertices[:, 0] -= rmin
+        cropped_contour.vertices[:, 1] -= cmin
 
+        if debug:
+            plt.clf()
+            plt.imshow(cropped, cmap='hot')
+            plt.plot(cropped_contour.vertices[:, 1], cropped_contour.vertices[:, 0], 'b')
+            plt.show()
 
-def tanh(z):
-    x = (np.exp(2.0 * z) - 1.0) / (np.exp(2.0 * z) + 1.0)
-    return x
+        if zero_outside:
+            # now find the pixels outside of the contour and set them to zero
+            y, x = np.mgrid[:cropped.shape[0], :cropped.shape[1]]
+            pixels = np.column_stack((y.ravel(), x.ravel()))
+            galaxy_pixels = cropped_contour.contains_points(pixels)
+            outside = np.where(~galaxy_pixels)[0]
+            outside = np.unravel_index(outside, cropped.shape)
+            cropped[outside] = 0.0
+
+        return cropped, gcontour, border
 
 
 def bivariate_gaussian(x, y, x_sigma, y_sigma, rho, xcent, ycent):
@@ -55,9 +87,9 @@ def bivariate_gaussian(x, y, x_sigma, y_sigma, rho, xcent, ycent):
     return bgauss
 
 
-def sum_of_gaussians(xgrid, ygrid, params, xcent, ycent):
+def sum_of_gaussians(xgrid, ygrid, params):
     """
-    Sum of Gaussian functions model, with the centroids held fixed.
+    Gaussian function model.
 
     :param xgrid, ygrid: The x and y values, npix ** 2 element arrays.
     :param params: The sequence of parameters for the K gaussian functions. Each Gaussian function will have parameters
@@ -65,341 +97,285 @@ def sum_of_gaussians(xgrid, ygrid, params, xcent, ycent):
     :param xcent: The mean for the x-values.
     :param ycent: The mean for the y-values.
     """
-    ngauss = len(xcent)
-    model = 0.0
-    for k in range(ngauss):
-        amp = np.exp(params[4 * k])
-        x_sigma = np.exp(params[4 * k + 1])
-        y_sigma = np.exp(params[4 * k + 2])
-        rho = tanh(params[4 * k + 3])
-        model += amp * bivariate_gaussian(xgrid, ygrid, x_sigma, y_sigma, rho, xcent[k], ycent[k])
+    amp = np.exp(params[0])
+    x_sigma = np.exp(params[1])
+    y_sigma = np.exp(params[2])
+    rho = np.tanh(params[3])
+    xcent = params[4]
+    ycent = params[5]
+    model = amp * bivariate_gaussian(xgrid, ygrid, x_sigma, y_sigma, rho, xcent, ycent)
 
     return model
 
 
-def sum_of_gaussians_error(params, image, xgrid, ygrid, xcent, ycent):
-    error = sum_of_gaussians(xgrid, ygrid, params, xcent, ycent) - image
+def sum_of_gaussians_error(params, image, xgrid, ygrid):
+    error = sum_of_gaussians(xgrid, ygrid, params) - image
     return error
 
 
-def extract_gal_image(file):
+def get_rotation_angle(image):
+    # fit a gaussian function model to the image to get the rotation angle
+    iparams = np.zeros(6)
+    xcentroid = image.shape[1] / 2.0
+    ycentroid = image.shape[0] / 2.0
+    # make initial guess of sigmas no larger than 1/4 length of image
+    Mxx = (image.shape[1] / 4.0) ** 2
+    Myy = (image.shape[0] / 4.0) ** 2
 
+    amp = image[ycentroid, xcentroid]
+
+    iparams[0] = np.log(amp)
+    iparams[1] = 0.5 * np.log(Mxx)
+    iparams[2] = 0.5 * np.log(Myy)
+    iparams[4] = xcentroid
+    iparams[5] = ycentroid
+
+    # subtract off the base level of the image as the median of the values along the border
+    base_flux = image[image > 0].min()
+    image_fit = image - base_flux
+    rowgrid, colgrid = np.mgrid[:image.shape[0], :image.shape[1]]
+
+    if not np.all(np.isfinite(iparams)):
+        # non-finite initial guess, skip this source
+        return None
+
+    params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
+                                       args=(image_fit.ravel(), colgrid.ravel(), rowgrid.ravel()),
+                                       ftol=1e-2, xtol=1e-2)
+
+    # now get rotation angle from eigendecomposition of best-fit covariance matrix
+    rho = np.tanh(params[3])
+    xsigma = np.exp(params[1])
+    ysigma = np.exp(params[2])
+    covar = np.zeros((2, 2))
+    covar[0, 0] = xsigma ** 2
+    covar[1, 1] = ysigma ** 2
+    covar[0, 1] = rho * xsigma * ysigma
+    covar[1, 0] = covar[0, 1]
+
+    vals, vecs = np.linalg.eigh(covar)
+    order = vals.argsort()[::-1]
+    vals, vecs = vals[order], vecs[:, order]
+
+    rotang = np.degrees(np.arctan2(*vecs[:, 0][::-1]))
+
+    if not np.isfinite(rotang):
+        rotang = None
+
+    return rotang
+
+
+def center_galaxy(image, original_image, centroid=None):
+    if centroid is None:
+        # apply median filter to find the galaxy centroid
+        centroid = median_filter(image, size=10).argmax()
+        centroid = np.unravel_index(centroid, image.shape)
+    # recenter image
+    roffset = centroid[0] - image.shape[0] / 2
+    if roffset < 0:
+        # add more white space to top of image
+        extra_rows = image.shape[0] - 2 * centroid[0]
+        image = np.vstack((np.zeros((extra_rows, image.shape[1])), image))
+    elif roffset > 0:
+        # add more white space to bottom of image
+        extra_rows = 2 * centroid[0] - image.shape[0]
+        image = np.vstack((image, np.zeros((extra_rows, image.shape[1]))))
+    coffset = centroid[1] - image.shape[1] / 2
+    if coffset > 0:
+        # add more white space to right of image
+        extra_columns = 2 * centroid[1] - image.shape[1]
+        image = np.column_stack((image, np.zeros((image.shape[0], extra_columns))))
+    elif coffset < 0:
+        # add more white space to left of image
+        extra_columns = image.shape[1] - 2 * centroid[1]
+        image = np.column_stack((np.zeros((image.shape[0], extra_columns)), image))
+
+    return image, centroid
+
+
+def crop_image(image, shape):
+    nrows, ncols = image.shape
+    rdiff = nrows - shape[0]
+
+    if rdiff < 0:
+        # need to add rows
+        extra_rows = np.abs(rdiff) / 2
+        # first add to top of image
+        if extra_rows != 0:
+            image = np.vstack((np.zeros((extra_rows, ncols)), image))
+        # add remaining rows to bottom of image
+        extra_rows = shape[0] - image.shape[0]
+        if extra_rows != 0:
+            image = np.vstack((image, np.zeros(extra_rows, ncols)))
+    elif rdiff > 0:
+        # need to remove rows
+        nremove = rdiff / 2
+        if nremove != 0:
+            image = image[nremove:, :]
+        nremove = image.shape[0] - shape[0]
+        if nremove != 0:
+            image = image[:-nremove, :]
+    nrows = image.shape[0]
+
+    cdiff = ncols - shape[1]
+    if cdiff < 0:
+        # need to add columns
+        extra_cols = np.abs(cdiff) / 2
+        # first add to left of image
+        if extra_rows != 0:
+            image = np.column_stack((np.zeros((extra_cols, nrows)), image))
+        # add remaining columns to right of image
+        extra_cols = shape[1] - image.shape[1]
+        if extra_cols != 0:
+            image = np.vstack((image, np.zeros(extra_cols, nrows)))
+    elif cdiff > 0:
+        # need to remove columns
+        nremove = cdiff / 2
+        if nremove != 0:
+            image = image[:, nremove:]
+        nremove = image.shape[1] - shape[1]
+        if nremove != 0:
+            image = image[:, -nremove]
+
+    return image
+
+
+def extract_gal_image(file):
     source_id = file.split('/')[-1].split('.')[0]
     image_dir = os.path.dirname(file) + '/'
     print source_id
     im = np.array(Image.open(file)).astype(float)
-    ndim = im.shape
 
-    error_messages = {'SourceID': source_id, 'ErrorFlag': 0}
+    # use image from the middle (r?) band as size and rotation reference, so that's why we do it first
+    centroid = None
+    rotang = None
+    gcontour = None
+    gcontour2 = None
+    for c in [1, 0, 2]:
+        this_im = im[:, :, c]
+        flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
+        # first extract galaxy pixels
+        cropped, gcontour, border = extract_galaxy(this_im.copy(), flux_sigma, gcontour)
 
-    # use image from the middle (r?) band
-    c = 1
-    # find local maximum that is closest to center of image
-    this_im = im[:, :, c]
-    flux_sigma = 1.5 * np.median(np.abs(this_im - np.median(this_im)))  # MAD: robust estimate of sigma
-    peak_threshold = np.median(this_im) + 8.0 * flux_sigma  # only look for 8-sigma peaks
-    peak_threshold = min(peak_threshold, this_im.max() / 3)
-    # apply median filter before finding local maxima
-    filtered_im = median_filter(this_im, size=10)
-    coords = peak_local_max(filtered_im, min_distance=20, threshold_abs=peak_threshold,
-                            exclude_border=False)
+        # check output
+        if cropped is None:
+            break
 
-    cdistance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
-    central_idx = cdistance.argmin()
-    uvals, uidx = np.unique(filtered_im[coords[:, 0], coords[:, 1]], return_index=True)
-    # make sure local max or duplicate closest to center is in uidx
-    min_distance = 1e300
-    for u in uidx:
-        distance = np.sqrt((coords[u, 0] - coords[central_idx, 0]) ** 2 + (coords[u, 1] - coords[central_idx, 1]) ** 2)
-        min_distance = min(distance, min_distance)
-    # if minimum distance between coords[uidx, :] and coords[central_idx, :] < 5, local max closest to center of image
-    # is not in the uidx, so add it
-    if min_distance > 5:
-        # make sure peak closest to center of image is included
-        uidx = np.append(uidx, central_idx)
+        if debug:
+            plt.clf()
+            plt.imshow(cropped, cmap='hot')
+            plt.show()
 
-    coords = coords[uidx, :]  # only keep peaks with unique flux values
-    distance = np.sqrt((coords[:, 0] - ndim[0] / 2) ** 2 + (coords[:, 1] - ndim[1] / 2) ** 2)
-    d_idx = distance.argmin()
-    # order the peaks by intensity, only keep top 5
-    sort_idx = np.argsort(filtered_im[coords[:, 0], coords[:, 1]])[::-1]
-    if d_idx in sort_idx[:5]:
-        distance = distance[sort_idx[:5]]
-        coords = coords[sort_idx[:5]]
-    else:
-        # make sure we keep the central galaxy
-        sort_idx = sort_idx[:4]
-        sort_idx = np.append(sort_idx, d_idx)
-        distance = distance[sort_idx]
-        coords = coords[sort_idx]
+        if c == 1:
+            # get the rotation angle, using the c == 1 band as the reference
+            rotang = get_rotation_angle(cropped)
+            # check output
+            if rotang is None:
+                break
 
-    # order the peaks by distance from the center of the image
-    sort_idx = np.argsort(distance)
-    distance = distance[sort_idx]
-    coords = coords[sort_idx, :]
+        # rotate the image using the orientation for image[c == 1] so that major axis is along horizontal
+        cropped = rotate(this_im, rotang, reshape=False)
 
-    if doshow:
-        plt.imshow(this_im, cmap='hot')
-        plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-        plt.plot(np.array([0, ndim[1]]), np.array([ndim[0]/2, ndim[0]/2]), 'g-')
-        plt.plot(np.array([ndim[1]/2, ndim[1]/2]), np.array([0, ndim[0]]), 'g-')
-        plt.xlim(0, ndim[1])
-        plt.ylim(0, ndim[0])
-        plt.show()
-        # plt.imshow(filtered_im, cmap='hot')
-        # plt.plot([p[1] for p in coords], [p[0] for p in coords], 'bo')
-        # plt.xlim(0, ndim[1])
-        # plt.ylim(0, ndim[0])
+        # need to crop image again after rotation
+        cropped, gcontour2, border2 = extract_galaxy(cropped.copy(), flux_sigma, gcontour2, zero_outside=False)
+
+        # check output
+        if cropped is None:
+            break
+
+        if debug:
+            plt.clf()
+            plt.imshow(cropped, cmap='hot')
+            plt.title('Cropped, After Rotation')
+            plt.show()
+
+        # center the galaxy image about the peak in r-band brightness
+        cropped, centroid = center_galaxy(cropped, this_im, centroid)
+
+        # set the pixels with zero flux to noise by randomly sampling from the border of the galaxy contour
+        zero_flux = (cropped == 0)
+        idx = np.random.random_integers(0, len(border2)-1, np.sum(zero_flux))
+        cropped[zero_flux] = border2[idx]
+
+        if debug:
+            plt.clf()
+            plt.imshow(cropped, cmap='hot')
+            plt.title('Centered')
+            plt.show()
+
+
+        # scale the image to have zero flux on average along the border
+        background = np.median(np.hstack((cropped[:, 0], cropped[:, -1], cropped[0, 1:-1], cropped[-1, 1:-1])))
+        cropped -= np.median(background)
+
+        # plt.hist(cropped.ravel(), bins=100)
+        # plt.show()
+        # plt.plot(cropped[:, cropped.shape[1]/2])
+        # plt.plot(cropped[cropped.shape[0]/2, :])
         # plt.show()
 
-    # fit a mixture of gaussian functions model to the image, one gaussian for each local maximum
-    nsources = len(distance)
-    iparams = np.zeros(nsources * 4)
-    xcentroids = np.zeros(nsources)
-    ycentroids = np.zeros(nsources)
-    for i in range(nsources):
-        centroid = np.array([coords[i, 1], coords[i, 0]])
-        xcentroids[i] = centroid[0]
-        ycentroids[i] = centroid[1]
-        xcent = np.arange(ndim[0]) - centroid[0]
-        ycent = np.arange(ndim[1]) - centroid[1]
-        Myy = np.sum(ycent ** 2 * this_im[:, coords[i, 1]]) / np.sum(this_im[:, coords[i, 1]])
-        Mxx = np.sum(xcent ** 2 * this_im[coords[i, 0], :]) / np.sum(this_im[coords[i, 0], :])
-        if i == 0:
-            # main galaxy, so make initial guess of sigmas no larger than 1/4 length of image
-            Mxx_min = (ndim[0] / 4.0) ** 2
-            Myy_min = (ndim[1] / 4.0) ** 2
-        else:
-            # contaminants, make initial guess of sigmas no larger than 20 pixels
-            Mxx_min = 20.0 ** 2
-            Myy_min = 20.0 ** 2
-        Mxx = min(Mxx, Mxx_min)
-        Myy = min(Myy, Myy_min)
-
-        amp = this_im[centroid[1], centroid[0]]
-
-        iparams[4 * i] = np.log(amp)
-        # iparams[4 * i + 1] = 0.5 * np.log(Mxx)
-        # iparams[4 * i + 2] = 0.5 * np.log(Myy)
-        iparams[4 * i + 1] = 0.5 * np.log(9.0)
-        iparams[4 * i + 1] = 0.5 * np.log(9.0)
-
-    # subtract off the base level of the image as the median of the values along the border
-    border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
-    base_flux = np.median(border)
-
-    image_fit = this_im - base_flux
-    rowgrid, colgrid = np.mgrid[:ndim[0], :ndim[1]]
-
-    if ~np.all(np.isfinite(iparams)):
-        # non-finite initial guess, skip this source
-        print 'Non-finite initial guess at parameters detected for source', source_id, ', band', c
-        error_messages['ErrorFlag'] = -99
-        return error_messages
-
-
-    params, success = optimize.leastsq(sum_of_gaussians_error, iparams,
-                                       args=(image_fit.ravel(), colgrid.ravel(), rowgrid.ravel(),
-                                             xcentroids, ycentroids), ftol=5e-2, xtol=5e-2)
-
-    # if error, then save the info for analysis later
-    error_messages['ErrorFlag'] = success
-
-    if ~np.all(np.isfinite(params)):
-        # don't crop image and save if non-finite parameters
-        print 'Non-finite parameters detected for source', source_id, ', band', c
-        return error_messages
-
-    # get ellipse parameters for each Gaussian function
-    rotang = np.zeros(nsources)
-    amajor = np.zeros(nsources)
-    aminor = np.zeros(nsources)
-    gidx = 4 * np.arange(nsources)
-    rho = tanh(params[gidx + 3])
-    xsigma = np.exp(params[gidx + 1])
-    ysigma = np.exp(params[gidx + 2])
-    for k in range(nsources):
-        radius = np.sqrt(xsigma[k] ** 2 + ysigma[k] ** 2)
-        covar = np.zeros((2, 2))
-        covar[0, 0] = xsigma[k] ** 2
-        covar[1, 1] = ysigma[k] ** 2
-        covar[0, 1] = rho[k] * xsigma[k] * ysigma[k]
-        covar[1, 0] = covar[0, 1]
-
-        vals, vecs = np.linalg.eigh(covar)
-        order = vals.argsort()[::-1]
-        vals, vecs = vals[order], vecs[:, order]
-
-        rotang[k] = np.arctan2(*vecs[:, 0][::-1])
-        amajor[k], aminor[k] = np.sqrt(vals)  # major and minor axes of ellipse
-
-        this_centroid = np.array([xcentroids[k], ycentroids[k]])
-        gal_centroid = np.array([xcentroids[0], ycentroids[0]])
-        centdiff = this_centroid - gal_centroid
-        gal_covar = np.zeros_like(covar)
-        gal_covar[0, 0] = xsigma[0] ** 2
-        gal_covar[1, 1] = ysigma[0] ** 2
-        gal_covar[0, 1] = rho[0] * xsigma[0] * ysigma[0]
-        gal_covar[1, 0] = covar[0, 1]
-
-        mah_distance = np.sqrt(np.sum(centdiff * np.dot(linalg.inv(gal_covar), centdiff)))
-        if k > 0 and radius < 20.0 and np.exp(params[4 * k] - params[0]) > 0.2 and mah_distance < 5.0:
-            # subtract any nearby sources that look like stars and are 20% as bright as the central galaxy
-            gauss_image = bivariate_gaussian(colgrid, rowgrid, xsigma[k], ysigma[k], rho[k], xcentroids[k],
-                                             ycentroids[k])
-            image_fit -= np.exp(params[4 * k]) * gauss_image
-
-    # convert parameter output to a dictionary
-    gauss_params = {'amplitude': np.exp(params[gidx]), 'xcent': xcentroids, 'ycent': ycentroids,
-                    'xsigma': xsigma, 'ysigma': ysigma, 'rho': rho, 'theta': np.degrees(rotang),
-                    'amajor': amajor, 'aminor': aminor}
-    gauss_params = pd.DataFrame(gauss_params)  # convert to Pandas DataFrame
-    gauss_params.index.name = 'GaussianID'
-
-    # crop the image to 2.5-sigma
-    arange = int(2.5 * np.abs(gauss_params['aminor'][0]))
-    if arange < 1:
-        arange = 20.0
-        gauss_params['aminor'][0] = 1.0
-    brange = int(2.5 * np.abs(gauss_params['amajor'][0]))
-    if brange < 10:
-        brange = 20.0
-    if gauss_params['amajor'][0] < 1:
-        gauss_params['amajor'][0] = 1.0
-
-    for band in [1, 0, 2]:  # do middle band first since we want to use its asymmetry info
-        this_im = im[:, :, band]
-        # subtract off the base level of the image as the median of the values along the border
-        border = np.hstack((this_im[:, 0], this_im[:, -1], this_im[0, 1:-1], this_im[-1, 1:-1]))
-        base_flux = np.median(border)
-
-        image_fit = this_im - base_flux
-
-        # center the image over the center of the galaxy
-        rcent = coords[0, 0]
-        ccent = coords[0, 1]
-        rrange = min(ndim[1] - rcent, rcent)
-        crange = min(ndim[0] - ccent, ccent)
-        rmin = rcent - rrange
-        rmax = rcent + rrange
-        cmin = ccent - crange
-        cmax = ccent + crange
-
-        image_fit = image_fit[rmin:rmax, cmin:cmax]
-
-        if doshow:
-            plt.imshow(image_fit, cmap='hot')
-            plt.plot(np.array([0, image_fit.shape[1]]), np.array([image_fit.shape[0]/2, image_fit.shape[0]/2]), 'g-')
-            plt.plot(np.array([image_fit.shape[1]/2, image_fit.shape[1]/2]), np.array([0, image_fit.shape[0]]), 'g-')
-            plt.xlim(0, ndim[1])
-            plt.ylim(0, ndim[0])
-            plt.title('Centered Image')
-            plt.show()
-
-        # rotate the image so that semi-major axis is along the horizontal
-        image_fit = rotate(image_fit, gauss_params['theta'][0], reshape=False)
-
-        if doshow:
-            rcent = image_fit.shape[0] / 2
-            ccent = image_fit.shape[1] / 2
-            plt.imshow(image_fit, cmap='hot')
-            plt.plot(np.array([0, image_fit.shape[1]]), np.array([rcent, rcent]), 'g-')
-            plt.plot(np.array([ccent, ccent]), np.array([0, image_fit.shape[0]]), 'g-')
-            plt.xlim(0, image_fit.shape[1])
-            plt.ylim(0, image_fit.shape[0])
-            plt.title('Rotated Image')
-            plt.show()
-
-        # now crop the image to 2.5 sigma
-        rcent = image_fit.shape[0] / 2
-        ccent = image_fit.shape[1] / 2
-        rmin = rcent - arange
-        rmin = max(rmin, 0)
-        rmax = rcent + arange
-        rmax = min(rmax, ndim[0])
-        cmin = ccent - brange
-        cmin = max(cmin, 0)
-        cmax = ccent + brange
-        cmax = min(cmax, ndim[1])
-        cropped_im = image_fit[rmin:rmax, cmin:cmax].copy()
-
-        if doshow:
-            rcent = cropped_im.shape[0] / 2
-            ccent = cropped_im.shape[1] / 2
-            plt.imshow(cropped_im, cmap='hot')
-            plt.plot(np.array([0, cropped_im.shape[1]]), np.array([rcent, rcent]), 'g-')
-            plt.plot(np.array([ccent, ccent]), np.array([0, cropped_im.shape[0]]), 'g-')
-            plt.xlim(0, cropped_im.shape[1])
-            plt.ylim(0, cropped_im.shape[0])
-            plt.title('Cropped Image')
-            plt.show()
-
         # flip so asymmetry in middle band is always on the right
-        if band == 1:
-            column_collapse = cropped_im.mean(axis=0)
+        if c == 1:
+            column_collapse = cropped.mean(axis=0)
             column_collapse = column_collapse / np.sum(np.abs(column_collapse))
-            col_asymmetry = np.sum(np.abs(column_collapse) * (np.arange(cropped_im.shape[1]) -
-                                                              cropped_im.shape[1] / 2) ** 3)
+            col_asymmetry = np.sum(np.abs(column_collapse) * (np.arange(cropped.shape[1]) -
+                                                              cropped.shape[1] / 2) ** 3)
         if np.sign(col_asymmetry) < 0:
             # image is asymmetric toward the left, flip it
-            cropped_im = cropped_im[:, ::-1]
-        # flip so asymmetry is always on the top
-        if band == 1:
-            row_collapse = cropped_im.mean(axis=1)
-            row_collapse = row_collapse / np.sum(np.abs(row_collapse))
-            row_asymmetry = np.sum(np.abs(row_collapse) * (np.arange(cropped_im.shape[0]) -
-                                                           cropped_im.shape[0] / 2) ** 3)
-        if np.sign(row_asymmetry) < 0:
-            cropped_im = cropped_im[::-1, :]
+            cropped = cropped[:, ::-1]
 
-        # save a plot of the image with the Gaussian ellipses and the cropped image
+        # flip so asymmetry is always on the top
+        if c == 1:
+            row_collapse = cropped.mean(axis=1)
+            row_collapse = row_collapse / np.sum(np.abs(row_collapse))
+            row_asymmetry = np.sum(np.abs(row_collapse) * (np.arange(cropped.shape[0]) -
+                                                           cropped.shape[0] / 2) ** 3)
+        if np.sign(row_asymmetry) < 0:
+            cropped = cropped[::-1, :]
+
+        # save a plot comparing the original image to the extracted image
         plt.clf()
         plt.subplot(121)
         plt.imshow(this_im, cmap='hot')
         plt.title('Original')
-        for k in range(nsources):
-            # plot centroid of each ellipse
-            plt.plot(xcentroids[k], ycentroids[k], 'bo')
-            # plot 2-sigma region of each gaussian
-            x_ell, y_ell = ellipse(2 * amajor[k], 2 * aminor[k], rotang[k], xcentroids[k], ycentroids[k])
-            plt.plot(x_ell, y_ell, 'b')
-        plt.xlim(0, ndim[0])
-        plt.ylim(0, ndim[1])
         plt.subplot(122)
-        plt.imshow(cropped_im, cmap='hot')
-        plt.plot(cropped_im.shape[1] / 2, cropped_im.shape[0] / 2, 'b+')
-        plt.xlim(0, cropped_im.shape[1])
-        plt.ylim(0, cropped_im.shape[0])
-        plt.title('Cropped')
-        plt.savefig(plot_dir + source_id + '_' + str(band) + '.png')
+        rcent = cropped.shape[0] / 2
+        ccent = cropped.shape[1] / 2
+        plt.imshow(cropped, cmap='hot')
+        plt.plot(np.array([0, cropped.shape[1]]), np.array([rcent, rcent]), 'g-')
+        plt.plot(np.array([ccent, ccent]), np.array([0, cropped.shape[0]]), 'g-')
+        cent = np.unravel_index(cropped.argmax(), cropped.shape)
+        plt.plot(cent[1], cent[0], 'bo')
+        plt.xlim(0, cropped.shape[1])
+        plt.ylim(0, cropped.shape[0])
+        plt.title('Extracted Galaxy Image')
+        plt.savefig(plot_dir + source_id + '_' + str(c) + '.png')
         if doshow:
             plt.show()
         plt.close()
-        # finally, save the cropped image as a numpy array
-        print 'Saving file to', image_dir + source_id + '_' + str(band) + '.npy'
-        np.save(image_dir + source_id + '_' + str(band), cropped_im)
 
-        # save the mixture of gaussians model parameters
-        gauss_params.to_csv(data_dir + 'gauss_fit/transfer/' + source_id + '_gauss_params.csv')
+        # finally, save the extracted postage stampimage as a numpy array
+        print 'Saving file to', image_dir + source_id + '_' + str(c) + '.npy'
+        np.save(image_dir + source_id + '_' + str(c), cropped)
 
-    return error_messages
+    return source_id
 
 
 if __name__ == "__main__":
 
     start_time = datetime.datetime.now()
 
-    pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
-    # warm up the pool
-    pool.map(int, range(multiprocessing.cpu_count() - 1))
+    if do_parallel:
+        pool = multiprocessing.Pool(multiprocessing.cpu_count() - 1)
+        # warm up the pool
+        pool.map(int, range(multiprocessing.cpu_count() - 1))
 
-    # training_files = glob.glob(training_dir + '*.jpg')
-    # training_files = training_files[55000:]
+    file_dir = training_dir
+    # file_dir = test_dir
 
-    # run on test set images
     files = glob.glob(file_dir + '*.jpg')
-    files = files[50000:]
-    # id_list = ['160788', '175306', '114125', '109698', '175870', '216293', '194473', '238866', '216338']
+    files = files[:1000]
+    # id_list = ['100380']
     # files = [file_dir + id + '.jpg' for id in id_list]
 
     # find which ones we've already done
@@ -426,21 +402,11 @@ if __name__ == "__main__":
     print 'Source ID...'
 
     if do_parallel:
-        err_msgs = pool.map(extract_gal_image, files)
+        gal_ids = pool.map(extract_gal_image, files)
     else:
-        err_msgs = map(extract_gal_image, files)
-
-    err_df = pd.DataFrame(err_msgs).set_index('SourceID')
-    # if CSV file already exists, append to end of it
-    if os.path.isfile(data_dir + 'gauss_fit/error_messages.csv'):
-        err_old = pd.read_csv(data_dir + 'gauss_fit/error_messages.csv').set_index('SourceID')
-        err_old = err_old.drop('Unnamed: 0', 1)
-        err_df = pd.concat([err_old, err_df])
-    # dump error messages to CSV file
-    err_df.to_csv(data_dir + 'gauss_fit/error_messages.csv')
+        gal_ids = map(extract_gal_image, files)
 
     end_time = datetime.datetime.now()
-
     tdiff = end_time - start_time
     tdiff = tdiff.total_seconds()
     print 'Did', len(files), 'galaxies in', tdiff / 60.0 / 60.0, 'hours.'

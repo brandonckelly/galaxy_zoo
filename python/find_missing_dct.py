@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cPickle
 from react import REACT2D
-from extract_postage_stamp import extract_gal_image
+from extract_postage_stamp_gauss_fit import extract_gal_image
 
 do_missing_dcts = True
 do_parallel = False

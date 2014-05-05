@@ -5,7 +5,7 @@ import os
 import pandas as pd
 import glob
 from make_feature_dataframe import make_gaussfit_features
-from extract_postage_stamp import extract_gal_image
+from extract_postage_stamp_gauss_fit import extract_gal_image
 import cPickle
 from galaxies_to_dct import do_dct_transform
 import multiprocessing
