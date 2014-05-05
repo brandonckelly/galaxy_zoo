@@ -19,7 +19,8 @@ plot_dir = base_dir + 'plots/'
 
 doshow = False
 image_dir = test_dir
-max_order0 = 50
+max_order0 = 40
+ncoefs = max_order0 * max_order0
 verbose = False
 do_parallel = True
 
@@ -37,6 +38,8 @@ def do_dct_transform(args):
 
     # now do the DCT on each image
     for band in range(3):
+        if not os.path.isfile(image_dir + galaxy_id + '_' + str(band) + '.npy'):
+            return None
         image = np.load(image_dir + galaxy_id + '_' + str(band) + '.npy')
         image /= total_flux  # normalize to flux over all 3 bands is unity
         border = np.hstack((image[:, 0], image[:, -1], image[0, 1:-1], image[-1, 1:-1]))
@@ -52,10 +55,10 @@ def do_dct_transform(args):
         # check image size, values
         if min(image.shape) < 5:
             print "Image dimensions need to be at least 5 pixels on either side."
-            continue
+            return None
         if not np.all(np.isfinite(image)):
             print "Non-finite values detected in image, ignoring."
-            continue
+            return None
 
         smoother2d = REACT2D(max_order=max_order, method='monotone')
         ismooth = smoother2d.fit(image, sigsqr)
@@ -84,6 +87,19 @@ def do_dct_transform(args):
         smoother2d.band = band
 
         cPickle.dump(smoother2d, open(data_dir + 'react/' + galaxy_id + '_' + str(band) + '_dct.pickle', 'wb'))
+
+        coefs = smoother2d.coefs
+        if len(coefs) < ncoefs:
+            # add zeros so all the coefficient arrays have a standard size
+            nzeros = ncoefs - len(coefs)
+            coefs = np.append(coefs, np.zeros(nzeros))
+
+        if band == 0:
+            dct_coefs = coefs
+        else:
+            dct_coefs = np.hstack((dct_coefs, coefs))
+
+    return dct_coefs
 
 
 if __name__ == "__main__":
