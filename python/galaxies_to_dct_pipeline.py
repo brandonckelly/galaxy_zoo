@@ -50,7 +50,7 @@ if __name__ == "__main__":
 
 
     files = glob.glob(image_dir + '*.jpg')
-    files = files[:1000]
+    # files = files[:1000]
     # id_list = ['100380']
     # files = [file_dir + id + '.jpg' for id in id_list]
 

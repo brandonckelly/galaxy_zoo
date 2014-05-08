@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import glob
 import cPickle
+import multiprocessing
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/galaxy_zoo/'
 dct_dir = base_dir + 'data/react/'
@@ -12,10 +13,10 @@ plot_dir = base_dir + 'plots/'
 
 npca = 500
 verbose = True
-ncoefs = 2500
+ncoefs = 40 * 40
 
 
-def build_dct_array(galaxy_ids, ncoefs):
+def build_dct_array(galaxy_ids):
 
     X = np.empty((len(galaxy_ids), ncoefs * 3))
     print 'Loading data for source'
@@ -38,24 +39,45 @@ def build_dct_array(galaxy_ids, ncoefs):
 
 if __name__ == "__main__":
 
-    # find which galaxies we have a full dct for
-    files_0 = glob.glob(dct_dir + '*_0_dct.pickle')
-    files_1 = glob.glob(dct_dir + '*_1_dct.pickle')
-    files_2 = glob.glob(dct_dir + '*_2_dct.pickle')
+    n_jobs = multiprocessing.cpu_count() - 1
+    pool = multiprocessing.Pool(n_jobs)
+    pool.map(int, range(n_jobs))
 
-    galaxy_ids_0 = set([f.split('/')[-1].split('_')[0] for f in files_0])
-    galaxy_ids_1 = set([f.split('/')[-1].split('_')[0] for f in files_1])
-    galaxy_ids_2 = set([f.split('/')[-1].split('_')[0] for f in files_2])
+    # find which ones we've already done
+    already_done1 = glob.glob(plot_dir + '*_0.png')
+    already_done2 = glob.glob(plot_dir + '*_1.png')
+    already_done3 = glob.glob(plot_dir + '*_2.png')
 
-    galaxy_ids = galaxy_ids_0 & galaxy_ids_1 & galaxy_ids_2
-    if verbose:
-        print "Found", len(galaxy_ids), "galaxies."
+    already_done1 = set([s.split('/')[-1].split('_')[0] for s in already_done1])
+    already_done2 = set([s.split('/')[-1].split('_')[0] for s in already_done2])
+    already_done3 = set([s.split('/')[-1].split('_')[0] for s in already_done3])
 
-    X = build_dct_array(galaxy_ids, ncoefs)
+    already_done = already_done1 & already_done2 & already_done3
+    print 'Found', len(already_done), 'galaxies.'
+
+    galaxy_id = list(already_done)
+
+    nchunks = len(galaxy_id) / n_jobs
+    id_list = []
+    integer_ids = []
+    for j in range(n_jobs - 1):
+        id_list.append(galaxy_id[j * nchunks:(j+1)*nchunks])
+        integer_ids.extend(np.array(id_list[-1]).astype(np.int))
+    id_list.append(galaxy_id[nchunks * (n_jobs-1):])
+    integer_ids.extend(np.array(id_list[-1]))
+
+    assert(len(np.unique(integer_ids)) == len(galaxy_id))
+
+    output = pool.map(build_dct_array, id_list)
+
+    X = np.vstack(output)
+
+    cPickle.dump((galaxy_id, X), open(base_dir + 'data/DCT_values.pickle', 'wb'))
+
     colnames = []
     for b in range(3):
         for i in xrange(ncoefs):
             colnames.append('DCT ' + str(b) + '.' + str(i))
-    df = pd.DataFrame(data=X, index=galaxy_ids, columns=colnames)
+    df = pd.DataFrame(data=X, index=np.array(galaxy_id).astype(np.int), columns=colnames)
 
     df.to_hdf(base_dir + 'data/DCT_coefs.h5', key='df')

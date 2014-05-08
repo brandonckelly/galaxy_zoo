@@ -48,7 +48,7 @@ def extract_galaxy(image, flux_sigma, gcontour=None, zero_outside=True):
 
     if gcontour is None:
         # could not find the galaxy
-        return None, gcontour
+        return None, gcontour, None
     else:
         # return the flux along the border of the galaxy, since we will use this to add noise later
         border = image[gcontour.vertices[:, 0].astype(int), gcontour.vertices[:, 1].astype(int)]
